@@ -1,0 +1,11 @@
+# scripts/fetch-san-db-ox.sh が本体バイナリをここへ置く
+# (.claude/rules/testing.md)。ソースは追跡しないが、go/ 配下のソース
+# コードはこの対象ではない。
+/bin/
+
+# Go のテスト・カバレッジ成果物
+*.test
+*.out
+
+*.log
+.DS_Store

@@ -1,0 +1,19 @@
+{
+  "name": "query-roundtrip",
+  "description": "A BLOB value round-trips through params and back unchanged (protocol.md's round-trip symmetry).",
+  "args": [],
+  "steps": [
+    {
+      "request": { "op": "exec", "sql": "CREATE TABLE t(b BLOB)" },
+      "expect": { "ok": true }
+    },
+    {
+      "request": { "op": "exec", "sql": "INSERT INTO t VALUES (?)", "params": [["aGk="]] },
+      "expect": { "ok": true, "rows_affected": 1 }
+    },
+    {
+      "request": { "op": "query", "sql": "SELECT b FROM t" },
+      "expect": { "ok": true, "columns": ["b"], "rows": [[["aGk="]]] }
+    }
+  ]
+}

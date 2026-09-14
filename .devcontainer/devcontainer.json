@@ -1,0 +1,27 @@
+{
+  "name": "san-db-ox-clients",
+  "image": "mcr.microsoft.com/devcontainers/base:bookworm",
+  "features": {
+    // Official devcontainers features only (ghcr.io/devcontainers/features/*)
+    // -- no community/third-party features. Add one line here per language
+    // as drivers are added (.claude/rules/directory-structure.md).
+    "ghcr.io/devcontainers/features/go:1": {}
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "golang.Go",
+        "ms-vscode.makefile-tools",
+        "github.vscode-github-actions",
+        "timonwong.shellcheck"
+      ],
+      "settings": {
+        "go.useLanguageServer": true,
+        "editor.formatOnSave": true,
+        "go.formatTool": "goimports"
+      }
+    }
+  },
+  "postCreateCommand": "bash .devcontainer/postCreate.sh",
+  "remoteUser": "vscode"
+}
