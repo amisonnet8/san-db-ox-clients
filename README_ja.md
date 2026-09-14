@@ -1,5 +1,7 @@
 # san-db-ox-clients
 
+*[English](README.md) | **日本語***
+
 [SanDBox](https://github.com/amisonnet8/san-db-ox)（DBエンジンとデータ
 領域を1つの実行ファイル内に保持する、環境構築不要のポータブルな単一
 バイナリ RDBMS）を、各プログラミング言語から子プロセスとして起動し、

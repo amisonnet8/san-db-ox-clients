@@ -1,5 +1,7 @@
 # san-db-ox-clients
 
+*[日本語](README_ja.md) | **English***
+
 Client libraries for [SanDBox](https://github.com/amisonnet8/san-db-ox)
 (a portable, zero-config, single-binary RDBMS that keeps both the engine
 and the data in one executable) — thin, per-language wrappers that
@@ -40,9 +42,7 @@ SanDBox nor this transport adds authentication, so exposing either one
 beyond a trusted network needs its own security configuration (SSH
 forced commands, TLS client authentication, source-IP restriction,
 `--read-only`). Copy-pasteable command examples for every pattern above
-are in [`docs/usage/connecting_ja.md`](docs/usage/connecting_ja.md)
-(Japanese for now; an English version follows once more languages
-land).
+are in [`docs/usage/connecting.md`](docs/usage/connecting.md).
 
 ## License
 
