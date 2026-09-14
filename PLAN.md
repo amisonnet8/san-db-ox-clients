@@ -8,10 +8,8 @@
 2. **②conformance の確立**: 完了。
 3. **③Go ドライバ: コーデック層＋直結トランスポート**: 完了。
 4. **④Go ドライバ: ソケットトランスポート（オプション層）**: 完了。
-5. **⑤ドキュメント・配布【現在地】**: `go/vX.Y.Z` タグでのリリース運用、README
-   本文の執筆、`docs/usage/connecting_ja.md`（`.claude/rules/connectivity.md`
-   の実例をコマンド付きで肉付けしたもの）。
-6. **⑥以降 他言語への展開**: Python → TypeScript →（需要を見て
+5. **⑤ドキュメント・配布**: 完了。
+6. **⑥以降 他言語への展開【現在地】**: Python → TypeScript →（需要を見て
    Rust / JVM(Java・Kotlin) / Ruby / C#(.NET) / PHP / C）。
 
 ## 言語の優先順位の根拠
@@ -32,7 +30,7 @@ stdio結合、SQL学習サンドボックス）を軸に検討した結果:
 
 ## 現在地
 
-**フェーズ①〜④完了。フェーズ⑤（ドキュメント・配布）着手前。**
+**フェーズ①〜⑤完了。フェーズ⑥（他言語への展開、Python から）着手前。**
 
 ### フェーズ①・②の要約
 
@@ -196,7 +194,55 @@ stdio結合、SQL学習サンドボックス）を軸に検討した結果:
 検査する（transport 層が `net` に依存するのは `architecture.md` が
 想定している姿そのもの）。
 
-**次はフェーズ⑤（ドキュメント・配布）。**
+### フェーズ⑤（ドキュメント・配布）で行ったこと
+
+- **`.devcontainer/postCreate.sh` に `openssh-server` を恒久導入。**
+  `openssh-client` だけでは forced command のようなサーバ側の設定を
+  実機検証できないため。sshd は常駐させず、検証のたびに手動起動する
+  運用。
+- **`docs/usage/connecting_ja.md`（新規）**: `connectivity.md` の判断を
+  実際にコピーして使えるコマンド例に肉付け。直結（ローカル・SSH・
+  forced command・Docker・Kubernetes）と socat 経由（素のソケット・
+  TLS/mTLS・接続元IP制限）の両方を、対応する
+  `sandbox.Open`/`OpenSocket`/`OpenSocketConn` の呼び出しと併記。
+  - **SSH forced command・socat の TLS/mTLS・IP 制限は、このセッション
+    内で実際に動かして確認した**（`testing.md`「検証できない例ほど、
+    書いた時点で手元で一度実行して確かめること」）。forced command が
+    クライアントの指定を無視すること、`restrict` がポートフォワードを
+    `administratively prohibited` として拒否すること（ローカル
+    リスナーの有無ではなく実際にデータが通るかで判定）、`verify=1` が
+    CA チェーン外の証明書を拒否し正しい証明書は通すこと、
+    `bind=127.0.0.1` が実際に listen アドレスを制限すること、`range=`
+    が範囲外の送信元を拒否することを、それぞれ実際のコマンドで確認
+    済み。
+  - **副産物の発見**: TLS サーバ証明書に `subjectAltName` が無いと、
+    Go の `crypto/tls`（含む最近の TLS クライアント全般）が
+    「legacy Common Name field」として拒否する。ドキュメントの証明書
+    生成例は最初から SAN 付きにして、この罠を踏まないようにした。
+- **`scripts/test-docs.sh`（新規）**: `docs/usage/*.md` から
+  `<!-- doctest -->` が直前に付いた bash ブロックだけを抽出して実行する、
+  全言語共有の唯一のスクリプト（本体の `tests/docs.sh` と同じオプトイン
+  方式、`testing.md` の要求）。現状は「ローカル直結」の1ブロックのみが
+  対象。`Makefile` に `test-docs`（`fetch` 依存）、CI に独立した `docs`
+  ジョブ（Go ツールチェーンに依存させない）を追加。
+- **`go/README.md`（新規、英語のみ）**: `distribution.md`「protocol 番号を
+  各言語の README に明記する」を満たす実体。`go get`
+  コマンド（サブディレクトリモジュールのタグ規則どおり、`go/` 接頭辞は
+  付けない）・`Open`/`OpenSocket`/`OpenSocketConn` のクイックスタート・
+  `connecting_ja.md` へのリンクを含む。pkg.go.dev が表示する実体になる。
+- **ルート `README.md`/`README_ja.md`**: 「言語別の状況」表の Go を
+  「準備中」から `go/` への参照に更新。「接続方法」節から
+  `docs/usage/connecting_ja.md` へリンク（英語版 `connecting.md` は
+  CLAUDE.md の日英順序ルールにより今回は作らない）。
+- **`go/v0.1.0` をローカルでタグ付け**（注釈付きタグ。**push は
+  ユーザーが実施**）。
+
+**この作業でやらなかったこと**: `docs/usage/connecting.md`（英語版、
+日英順序ルールにより先送り）、`tcpwrap` の実測（システム全体の
+`/etc/hosts.allow`/`deny` を書き換える必要があるため紹介のみに留めた）、
+他言語（Python 等）の README 新設。
+
+**次はフェーズ⑥（他言語への展開、Python から）。**
 
 ## GitHub リポジトリ設定（決定事項、リポジトリ作成時に設定）
 
