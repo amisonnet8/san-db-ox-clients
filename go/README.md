@@ -37,7 +37,7 @@ res, err := c.Query(ctx, "SELECT x FROM t")
 `Open` takes the command to launch, not a fixed "local" assumption, so the
 same call works over SSH, through Docker, or via `kubectl exec` just by
 changing the command and args -- see
-[`docs/usage/connecting_ja.md`](../docs/usage/connecting_ja.md) for worked
+[`docs/usage/connecting.md`](../docs/usage/connecting.md) for worked
 examples of each.
 
 ### Connecting over a socket instead
@@ -59,8 +59,9 @@ not there to call.
 
 For direct-connect over SSH/Docker/Kubernetes, socat with TLS client
 authentication, and source-IP restriction, see
-[`docs/usage/connecting_ja.md`](../docs/usage/connecting_ja.md) (Japanese;
-an English version will follow once more languages land).
+[`docs/usage/connecting.md`](../docs/usage/connecting.md) (a Japanese
+version is also available at
+[`docs/usage/connecting_ja.md`](../docs/usage/connecting_ja.md)).
 
 ## Testing
 
