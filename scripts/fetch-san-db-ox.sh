@@ -4,7 +4,7 @@ set -euo pipefail
 # 全言語で共有する唯一のダウンローダ (.claude/rules/testing.md)。
 # 追従先タグ・protocol 番号の正典は .claude/rules/protocol.md。本体側で
 # タグを追従し直す際は、まずそちらを更新してから、この変数を合わせる。
-SAN_DB_OX_TAG="v0.1.0"
+SAN_DB_OX_TAG="v0.1.1"
 SAN_DB_OX_REPO="amisonnet8/san-db-ox"
 
 BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/bin"

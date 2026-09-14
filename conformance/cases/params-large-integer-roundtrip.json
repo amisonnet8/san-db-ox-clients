@@ -1,7 +1,6 @@
 {
   "name": "params-large-integer-roundtrip",
-  "description": "A 64-bit integer beyond 2^53-1 passed via params should round-trip through INSERT/SELECT unchanged, exactly like the BLOB round-trip in query-roundtrip.json (protocol.md's round-trip symmetry, testing.md's explicit large-integer round-trip check). Currently fails: san-db-ox v0.1.0 decodes params numbers through float64, silently corrupting the value and changing the stored SQLite column type from INTEGER to REAL.",
-  "known_failing": "https://github.com/amisonnet8/san-db-ox/issues/1 -- params 内の大きな整数が REAL に化ける",
+  "description": "A 64-bit integer beyond 2^53-1 passed via params round-trips through INSERT/SELECT unchanged, exactly like the BLOB round-trip in query-roundtrip.json (protocol.md's round-trip symmetry, testing.md's explicit large-integer round-trip check). Was broken in v0.1.0 (params numbers decoded through float64, silently corrupting the value and changing the stored SQLite column type from INTEGER to REAL); fixed in v0.1.1 via json.Decoder.UseNumber(), per https://github.com/amisonnet8/san-db-ox/issues/1. Re-verified independently against the v0.1.1 release binary before removing known_failing.",
   "args": [],
   "steps": [
     {

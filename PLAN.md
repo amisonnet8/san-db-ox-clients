@@ -39,13 +39,11 @@ stdio結合、SQL学習サンドボックス）を軸に検討した結果:
 
 ## 現在地
 
-**フェーズ①完了、フェーズ②着手。**
+**フェーズ①完了、フェーズ②進行中（追従タグを `v0.1.1` に更新済み）。**
 
 フェーズ①の成果（`scripts/fetch-san-db-ox.sh`・`.gitignore`・
 `README.md`/`README_ja.md`・`.github/workflows/test.yml`・`Makefile` の
-`fetch` ターゲット等）は前セッションで完了。`bin/san-db-ox --serve-stdio`
-に対する hello 行・`exec`/`query` の実測、`make shellcheck`・`make trivy`
-の通過も確認済み。
+`fetch` ターゲット等）は前セッションで完了。
 
 **フェーズ②（conformance の確立）で行ったこと:**
 
@@ -59,7 +57,7 @@ stdio結合、SQL学習サンドボックス）を軸に検討した結果:
     変換するため `sqrt(-1)` 等では確認できないと判明）、int64 の
     最大・最小値の往復。
   - `error-codes.json` — `sqlite_error`/`bad_request`/`unsupported_op`/
-    `io_error` の4種を実機で確認して収録（`read_only` は別ケース）。
+    `io_error` を実機で確認して収録（`read_only` は別ケース）。
   - `read-only-mode.json` — **`--read-only` 下のエラーコードは2段階に
     分かれることを実機で確認して収録。** `exec` 経由の書き込みSQLは
     SQLite 自身の `PRAGMA query_only` 拒否で `sqlite_error` になり、
@@ -75,41 +73,58 @@ stdio結合、SQL学習サンドボックス）を軸に検討した結果:
     データの状態だけを見る**（`exec`/`load` で変更した実行時の DB
     状態には反応しない）ことを実機で確認し、`source` フィールドは
     起動時の argv[0] に依存し不安定なため `expect` から意図的に外した。
-  - `params-large-integer-roundtrip.json` — **`known_failing` 付き。**
-    下記のバグ②により、現在の `v0.1.0` に対しては必ず失敗する。
+  - `params-large-integer-roundtrip.json` — 当初 `known_failing` 付きで
+    収録（下記バグ②のため v0.1.0 では必ず失敗）。**v0.1.1 で修正確認後、
+    `known_failing` を削除済み**（下記）。
 - **`conformance/README_ja.md` に `known_failing` の規約を新設。** 本体
   側のバグで現時点では失敗するとわかっているケースを、「今の壊れた
   挙動」に期待値を合わせて緑にするのではなく、本来あるべき期待値の
   まま記録しておくための仕組み。
 
-**本体 (`san-db-ox` v0.1.0) の実装バグを2件発見し、上流へ Issue 起票
-済み。** いずれもプロトコルの設計判断ではなく実装バグであり、
-`CLAUDE.md` の方針に従いこのリポジトリ側で独自に回避せず、1つの Issue
-にまとめて報告した:
-**[amisonnet8/san-db-ox#1](https://github.com/amisonnet8/san-db-ox/issues/1)**。
+**本体 (`san-db-ox`) の実装バグを2件発見 → 上流へ Issue 起票 → `v0.1.1`
+で修正確認まで完了した。** いずれもプロトコルの設計判断ではなく実装
+バグであり、`CLAUDE.md` の方針に従いこのリポジトリ側で独自に回避せず、
+1つの Issue にまとめて報告した:
+**[amisonnet8/san-db-ox#1](https://github.com/amisonnet8/san-db-ox/issues/1)**
+（クローズ済み）。
 
-1. **`exec` で `sql` を省略するとプロセスがクラッシュする。**
-   `bad_request` を返すべきところ、`opExec`（`stdio.go:261`）が nil の
+1. **`exec`/`query` で `sql` を省略するとプロセスがクラッシュする
+   （`exec` のみ）。** `v0.1.0` では `opExec`（`stdio.go:261`）が nil の
    `sql.Result` に対して無条件で `RowsAffected()` を呼び、nil pointer
-   dereference で panic（exit code 2、接続断）。`query` を同条件で送っても
-   クラッシュせず空クエリとして処理される点から `exec` 固有と判明。
-   **conformance ケース化は見送った** — 現在のケース形式は「1ステップ＝
-   1つの JSON 応答行」を前提にしており、「このステップでプロセスが
-   クラッシュする」を表現する手段がない。修正されて通常の `bad_request`
-   応答になった時点で、`error-codes.json` に通常のケースとして追加する。
+   dereference で panic（exit code 2、接続断）していた。
 2. **`params` 経由の64bit整数（2^53超え）が `REAL` にサイレント破損する。**
-   `INSERT ... VALUES (?)` に `params:[9223372036854775807]` を渡すと
-   `typeof(n)` が `integer` ではなく `real` になり、値も丸められて
-   永続的に破損する。同じ値を SQL リテラルで書けば正しく `integer` に
-   なるため、`params` の受信デコード処理（`encoding/json` を
-   `UseNumber()` なしで使っている可能性が高い）に限定した問題と判明。
+   `v0.1.0` では `INSERT ... VALUES (?)` に
+   `params:[9223372036854775807]` を渡すと `typeof(n)` が `integer`
+   ではなく `real` になり、値も丸められて永続的に破損していた。
    `.claude/rules/protocol.md` が明記する「64bit整数を倍精度浮動小数点へ
-   デコードしない」契約に**本体自身が違反**しているケース。
-   `params-large-integer-roundtrip.json` として `known_failing` 付きで
-   収録済み（上記）。
+   デコードしない」契約に本体自身が違反していたケース。
 
-`params-large-integer-roundtrip.json` の `known_failing` は、実際の
-Issue URL（上記 #1）に差し替え済み。
+**`v0.1.1`（`compare/v0.1.0...v0.1.1`）で両方とも修正され、本リポジトリ
+側で実機に対して独立に再現・確認した。**
+
+- バグ①: `exec`/`query` とも `sql` 省略時に
+  `{"code":"bad_request","message":"missing required field: sql"}` を
+  返すようになり、クラッシュしない。`error-codes.json` に両方とも通常の
+  ケースとして追加した。
+- バグ②: `params:[9223372036854775807]` が `typeof(n) = "integer"` の
+  まま正しく往復することを確認。**確認には注意が必要だった** ——
+  最初 `jq -c` でケースファイルを読み直して再生したところ失敗したが、
+  これは本体の regression ではなく **`jq` 自身が
+  `9223372036854775807` を `9223372036854776000` に丸めていた**
+  ことが原因（`conformance/README_ja.md` が警告する「ケースファイル
+  自体のパースにも64bit精度が要る」の実例）。Go の `json.Number`
+  （`UseNumber()`）でケースファイルを読み直す小さなプログラムで再検証し、
+  正しく修正されていることを確認した。`params-large-integer-roundtrip.json`
+  の `known_failing` は削除済み。
+- Issue のクローズコメントには「本リポジトリの conformance が green に
+  なるまでは open のままにする」とあったが、実際には既に close 済み
+  だった（矛盾には気付いたが、コメント内容を鵜呑みにせず上記のとおり
+  独立に再現・確認する方針で進めた）。
+
+**追従タグを `.claude/rules/protocol.md`・`scripts/fetch-san-db-ox.sh`
+とも `v0.1.1` に更新済み。** `protocol` 番号は `1` のまま変わらず
+（バグ修正のみで、プロトコル設計自体の変更ではないため、CLAUDE.md の
+「まず本体の仕様書を直す」手順は不要と判断した）。
 
 `go/` は空のディレクトリのまま（フェーズ③で解消）。
 
@@ -161,16 +176,6 @@ Issue URL（上記 #1）に差し替え済み。
 - **`go/` が空のため git に現れない。** ドライバ着手（フェーズ③）で解消。
 - **PyPI / npm のパッケージ名の予約状況が未確認。** フェーズ⑥（Python）・
   それ以降（TypeScript）で確認する。
-- **`exec` の `sql` 省略時クラッシュ（バグ①、
-  [amisonnet8/san-db-ox#1](https://github.com/amisonnet8/san-db-ox/issues/1)）
-  のケース化を保留。** 現在の conformance ケース形式は「1ステップ＝1つの
-  JSON 応答行」を前提にしており、プロセスクラッシュを期待値として表現
-  する手段がない。上流で `bad_request` を返すよう修正されたら、
-  `error-codes.json` に通常のケースとして追加する。
-- **`params-large-integer-roundtrip.json`（バグ②）の `known_failing` を
-  外す。** 上流 Issue #1 の修正がリリースされ、追従タグ
-  （`.claude/rules/protocol.md`）を更新したタイミングで、このケースが
-  green になることを確認して `known_failing` フィールドを削除する。
 - **devcontainer.json 反映待ちリスト**: 現行コンテナはリビルドせずに
   開発を進める方針（都度手動でインストール・設定して進め、区切りでまとめて
   `devcontainer.json` へ反映する）。session内で手動インストール・設定を

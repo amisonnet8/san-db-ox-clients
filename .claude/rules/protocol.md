@@ -13,7 +13,7 @@
 | 項目 | 値 |
 | :--- | :--- |
 | 本体リポジトリ | `github.com/amisonnet8/san-db-ox` |
-| 追従しているタグ | `v0.1.0` |
+| 追従しているタグ | `v0.1.1` |
 | `protocol` 番号 | `1` |
 | 正典 | 上記タグの `docs/spec/san-db-ox_spec_ja.md` §7（stdioプロトコル） |
 | 補助 | 同タグの `docs/usage/stdio-protocol_ja.md` |

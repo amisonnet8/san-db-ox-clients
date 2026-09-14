@@ -1,6 +1,6 @@
 {
   "name": "error-codes",
-  "description": "Exercises 4 of the 5 stable error codes (protocol.md): sqlite_error (bad SQL), bad_request (wrong params shape), unsupported_op (unknown op), io_error (load from a nonexistent path). read_only is covered separately in read-only-mode.json since it requires the process to be started with --read-only. `exec` with a missing `sql` field is deliberately not exercised here -- it currently crashes the whole process instead of returning bad_request (see PLAN.md's known-issues note); the case format has no way to express an expected crash.",
+  "description": "Exercises 4 of the 5 stable error codes (protocol.md): sqlite_error (bad SQL), bad_request (wrong params shape, and -- since v0.1.1, see https://github.com/amisonnet8/san-db-ox/issues/1 -- a missing required field), unsupported_op (unknown op), io_error (load from a nonexistent path). read_only is covered separately in read-only-mode.json since it requires the process to be started with --read-only.",
   "args": [],
   "steps": [
     {
@@ -9,6 +9,14 @@
     },
     {
       "request": { "op": "query", "sql": "SELECT 1", "params": "not-an-array" },
+      "expect": { "ok": false, "error": { "code": "bad_request" } }
+    },
+    {
+      "request": { "op": "exec" },
+      "expect": { "ok": false, "error": { "code": "bad_request" } }
+    },
+    {
+      "request": { "op": "query" },
       "expect": { "ok": false, "error": { "code": "bad_request" } }
     },
     {
