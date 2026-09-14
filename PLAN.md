@@ -5,9 +5,8 @@
 ## 開発フェーズ
 
 1. **①リポジトリ骨格**: 完了。
-2. **②conformance の確立【現在地】**: ケース形式（`conformance/README_ja.md`）を
-   実装を通じて確定させ、最初のケース群を作る。
-3. **③Go ドライバ: コーデック層＋直結トランスポート**: `go/sandbox/`
+2. **②conformance の確立**: 完了。
+3. **③Go ドライバ: コーデック層＋直結トランスポート【現在地】**: `go/sandbox/`
    パッケージ。JSON Lines の符号化・復号、値の表現（BLOB/REAL/64bit整数）、
    子プロセス起動によるトランスポート。**起動コマンドを差し替え可能に
    するところまで**——これが済めば SSH/Docker 経由の接続もこの層のまま
@@ -39,7 +38,7 @@ stdio結合、SQL学習サンドボックス）を軸に検討した結果:
 
 ## 現在地
 
-**フェーズ①完了、フェーズ②進行中（追従タグを `v0.1.1` に更新済み）。**
+**フェーズ①・②完了。フェーズ③（Go ドライバ）着手前。**
 
 フェーズ①の成果（`scripts/fetch-san-db-ox.sh`・`.gitignore`・
 `README.md`/`README_ja.md`・`.github/workflows/test.yml`・`Makefile` の
@@ -61,11 +60,11 @@ stdio結合、SQL学習サンドボックス）を軸に検討した結果:
   - `read-only-mode.json` — **`--read-only` 下のエラーコードは2段階に
     分かれることを実機で確認して収録。** `exec` 経由の書き込みSQLは
     SQLite 自身の `PRAGMA query_only` 拒否で `sqlite_error` になり、
-    `overwrite`/`load` のような **op レベルの書き込みだけ** が
+    `overwrite`/`load`/`snapshot` のような **op レベルの書き込みだけ** が
     `read_only` になる。上流仕様書（`docs/spec/san-db-ox_spec_ja.md`
-    §2・§7）でも明記されている区別であり、矛盾ではない。ただし
-    `.claude/rules/testing.md` の現在の文言はこの区別を書いておらず
-    誤解を招くため、後で正確化する（下記「未確認事項」参照）。
+    §2・§7）でも明記されている区別であり、矛盾ではない
+    （`.claude/rules/testing.md` 側の文言も後日この区別を明記する形に
+    書き換え済み——下記参照）。
   - `introspection.json` — `tables`（アルファベット順）・`schema`
     （作成順、アルファベット順ではない）・`schema` の `table` 指定・
     `dump`/`dump` の `pattern` 指定を実機の出力に合わせて収録。
@@ -126,11 +125,18 @@ stdio結合、SQL学習サンドボックス）を軸に検討した結果:
 （バグ修正のみで、プロトコル設計自体の変更ではないため、CLAUDE.md の
 「まず本体の仕様書を直す」手順は不要と判断した）。
 
+**フェーズ②の残作業も完了した。** `.claude/rules/testing.md` の
+`--read-only` 節を、実機で確認した2段階の区別
+（`overwrite`/`load`/`snapshot` は `read_only`、`exec` の書き込みSQLは
+`sqlite_error`）を明記する形に書き換えた。あわせて `snapshot` op も
+`--read-only` 下で実際に `read_only` で拒否され、ファイルが作られない
+ことを実機で確認し、`read-only-mode.json` にステップを追加した。
+`testing.md` 冒頭の追従タグの直書き（`(現在 v0.1.0)`）も、`protocol.md`
+との二重管理を避けるため削除した。
+
 `go/` は空のディレクトリのまま（フェーズ③で解消）。
 
-**次はフェーズ②の残り（`.claude/rules/testing.md` の `--read-only`
-記述の正確化、下記「未確認事項」参照）を終えるか、フェーズ③
-（Go ドライバ）へ進む。**
+**次はフェーズ③（Go ドライバ: コーデック層＋直結トランスポート）。**
 
 ## GitHub リポジトリ設定（決定事項、リポジトリ作成時に設定）
 
@@ -158,16 +164,6 @@ stdio結合、SQL学習サンドボックス）を軸に検討した結果:
   （`.claude/rules/connectivity.md`）は `openssh-client` の範囲でのみ
   行った。ローカルの sshd を使った end-to-end 確認は、実際にドライバの
   SSH 経路を実装する際に別途行うこと。
-- **`.claude/rules/testing.md` の `--read-only` の記述を正確化する。**
-  現在の文言「書き込み操作を...送った際に `read_only` エラーコードで
-  拒否されることを確認する」は、`exec` 経由の SQL レベルの書き込みが
-  `sqlite_error` になる点（上記「現在地」参照）に触れておらず、素直に
-  読むと誤ったテストを書きうる。次にこのファイルを触る際に「`exec` の
-  書き込みSQLは `sqlite_error`、`overwrite`/`load` 等の op レベルの
-  書き込みは `read_only`」の区別を明記する。**これはこのリポジトリ自身の
-  テスト方針の文言修正であり、上流の仕様変更や CLAUDE.md の「まず本体の
-  仕様書を直す」手順は不要**（上流仕様書は既にこの区別を明記しており、
-  矛盾は無いため）。
 
 ## 保留事項
 
