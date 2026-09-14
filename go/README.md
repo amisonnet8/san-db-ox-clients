@@ -6,7 +6,7 @@ to a running `san-db-ox --serve-stdio` process, either as a child process
 `socat`.
 
 ```
-go get github.com/amisonnet8/san-db-ox-clients/go@v0.1.0
+go get github.com/amisonnet8/san-db-ox-clients/go@latest
 ```
 
 | | |
