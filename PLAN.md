@@ -42,17 +42,32 @@ stdio結合、SQL学習サンドボックス）を軸に検討した結果:
 
 ## 現在地
 
-**フェーズ①着手。** メタドキュメント一式（`CLAUDE.md`、`.claude/rules/`
+**フェーズ①完了。** メタドキュメント一式（`CLAUDE.md`、`.claude/rules/`
 7本、`.devcontainer/`、`Makefile`、`LICENSE`、`.gitattributes`、
-`conformance/` の枠組み）を作成した。`.claude/settings.json` と
-`.vscode/settings.json` はこのセッション以前に配置済み。
+`conformance/` の枠組み）に加え、以下を作成した。
 
-`go/` は空のディレクトリとして作成した（git は空ディレクトリを追跡しない
-ため、コミット対象としては現れない。フェーズ③で実体が入ると解消する）。
+- **`scripts/fetch-san-db-ox.sh`** — 本体バイナリを GitHub Releases から
+  取得し `.sha256` で検証、`bin/san-db-ox` へ配置する唯一のダウンローダ
+  （`.claude/rules/testing.md`）。`SAN_DB_OX_BIN` による上書き、冪等な
+  再実行を実測確認済み。`make fetch` から呼ぶ。
+- **`.gitignore`** — `bin/`（`fetch-san-db-ox.sh` の出力先）を除外。
+- **`README.md` / `README_ja.md`** — 骨格のみ（本文の作り込みはフェーズ⑤）。
+- **`.github/workflows/test.yml`** — `shellcheck`・`trivy` の2ジョブ
+  （いずれも `ubuntu-latest` 限定）。Go のジョブはフェーズ③でコードが
+  入ってから追加する。
+- **`Makefile`** — `fetch` ターゲットを追加。`trivy` ターゲットに
+  `--skip-dirs bin` を追加（本体バイナリを自分のリポジトリの脆弱性
+  スキャン対象に含めないため）。
 
-まだ手を付けていないもの: `.github/workflows/`・`README.md`/`README_ja.md`・
-`.gitignore`・`scripts/fetch-san-db-ox.sh`。ドライバの実装コードは意図的に
-書いていない——最初に何を置くかは別途方針を決めてから着手する。
+`bin/san-db-ox --serve-stdio` に対する hello 行・`exec`/`query` の実測を
+手元で確認済み（`protocol: 1`、`.claude/rules/protocol.md` の固定表と
+一致）。`make shellcheck`・`make trivy` もこの時点で通ることを確認した。
+
+`go/` は空のディレクトリのまま（git は空ディレクトリを追跡しないため、
+コミット対象としては現れない。フェーズ③で実体が入ると解消する）。
+
+**次はフェーズ②（conformance の確立）またはフェーズ③（Go ドライバ）へ
+進む。** ドライバの実装コードは意図的にまだ書いていない。
 
 ## GitHub リポジトリ設定（決定事項、リポジトリ作成時に設定）
 

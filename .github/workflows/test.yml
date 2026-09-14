@@ -1,0 +1,30 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # ubuntu-latest 限定: shellcheck が windows-latest にプリインストール
+  # されている保証がなく、結果も OS で変わらないため
+  # (.claude/rules/testing.md)。
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: make shellcheck
+
+  trivy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # 脆弱性DBの鮮度を優先し、アクションのパッチバージョンは固定しない
+      # (.claude/rules/testing.md)。
+      - uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scanners: vuln,license
+          severity: HIGH,CRITICAL
+          exit-code: 1
+          skip-dirs: bin
