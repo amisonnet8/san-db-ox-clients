@@ -32,3 +32,18 @@ echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.
   | sudo tee /etc/apt/sources.list.d/trivy.list > /dev/null
 sudo apt-get update
 sudo apt-get install -y --no-install-recommends trivy
+
+# gh (GitHub CLI): same reasoning as trivy above -- not in Debian
+# bookworm's own repo at a usable version, installed from GitHub's own
+# apt repo instead. Needed to file issues/PRs against upstream
+# san-db-ox when a spec gap or implementation bug turns up there
+# (CLAUDE.md's "まず本体の仕様書を直すことを提案する" workflow starts
+# with an upstream issue). The key file GitHub publishes is already a
+# binary keyring, unlike trivy's ASCII-armored one above, so no
+# `gpg --dearmor` here.
+curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+  | sudo tee /usr/share/keyrings/githubcli.gpg > /dev/null
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli.gpg] https://cli.github.com/packages stable main" \
+  | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+sudo apt-get update
+sudo apt-get install -y --no-install-recommends gh
