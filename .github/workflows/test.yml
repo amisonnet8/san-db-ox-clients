@@ -28,3 +28,19 @@ jobs:
           severity: HIGH,CRITICAL
           exit-code: 1
           skip-dirs: bin
+
+  # ubuntu-latest 限定（現時点）: fetch-san-db-ox.sh は darwin/windows 向け
+  # アセットにも対応済みだが、マトリクス化は他言語が揃うフェーズ⑤以降で
+  # まとめて検討する（.claude/rules/directory-structure.md の「言語ディレクト
+  # リ同士は互いに依存しない」を保ちつつ、CI の複雑さを今は増やさない）。
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go/go.mod
+      - run: make go-build
+      - run: make go-vet
+      - run: make go-netcheck
+      - run: make go-test

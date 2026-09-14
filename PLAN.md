@@ -6,12 +6,8 @@
 
 1. **①リポジトリ骨格**: 完了。
 2. **②conformance の確立**: 完了。
-3. **③Go ドライバ: コーデック層＋直結トランスポート【現在地】**: `go/sandbox/`
-   パッケージ。JSON Lines の符号化・復号、値の表現（BLOB/REAL/64bit整数）、
-   子プロセス起動によるトランスポート。**起動コマンドを差し替え可能に
-   するところまで**——これが済めば SSH/Docker 経由の接続もこの層のまま
-   通る（`.claude/rules/architecture.md`、`.claude/rules/connectivity.md`）。
-4. **④Go ドライバ: ソケットトランスポート（オプション層）**: socat 等で
+3. **③Go ドライバ: コーデック層＋直結トランスポート**: 完了。
+4. **④Go ドライバ: ソケットトランスポート（オプション層）【現在地】**: socat 等で
    外付けされた TCP/UNIX ドメインソケットへの接続。`overwrite` 等、
    直結でしか成立しない API を型で分離する。
 5. **⑤ドキュメント・配布**: `go/vX.Y.Z` タグでのリリース運用、README
@@ -38,105 +34,101 @@ stdio結合、SQL学習サンドボックス）を軸に検討した結果:
 
 ## 現在地
 
-**フェーズ①・②完了。フェーズ③（Go ドライバ）着手前。**
+**フェーズ①〜③完了。フェーズ④（ソケットトランスポート）着手前。**
 
-フェーズ①の成果（`scripts/fetch-san-db-ox.sh`・`.gitignore`・
-`README.md`/`README_ja.md`・`.github/workflows/test.yml`・`Makefile` の
-`fetch` ターゲット等）は前セッションで完了。
+### フェーズ①・②の要約
 
-**フェーズ②（conformance の確立）で行ったこと:**
+- フェーズ①: メタドキュメント一式・`scripts/fetch-san-db-ox.sh`・CI
+  （`shellcheck`/`trivy`）・README 骨格を作成。
+- フェーズ②: conformance ケース6本（BLOB・REAL/NaN/Inf/大整数・エラー
+  コード5種・`--read-only`の2段階拒否・`tables`/`schema`/`dump`/
+  `inspect`）を実機で確認して収録し、`known_failing` 規約を新設。この
+  過程で本体 `v0.1.0` の実装バグを2件発見し
+  ([amisonnet8/san-db-ox#1](https://github.com/amisonnet8/san-db-ox/issues/1)、
+  クローズ済み)、`v0.1.1` での修正を独立に再現・確認して追従タグを
+  更新した。詳細な経緯（バグの原因・`jq` の精度丸めで一度誤検知した話・
+  `testing.md` の `--read-only` 記述修正）は git log 参照
+  （コミット `46cf6f7`〜`ce60306`）。
 
-- 本体 `v0.1.0` バイナリを手動で叩き、`conformance/README_ja.md` の
-  ケース形式を実装（＝実際のケースファイル作成）を通じて検証した。
-- 追加したケース（既存の `query-roundtrip.json` に加えて5本）:
-  - `real-and-integer-representation.json` — REAL の小数点表記
-    （`88.0`）、`+Inf`/`-Inf` の生テキスト（`9e999`/`-9e999`、
-    `1e308 * 10` 等のオーバーフローで再現）、NaN の `null` 化
-    （`Inf - Inf` 等で再現。SQLite の数学関数は NaN を自前で `NULL` に
-    変換するため `sqrt(-1)` 等では確認できないと判明）、int64 の
-    最大・最小値の往復。
-  - `error-codes.json` — `sqlite_error`/`bad_request`/`unsupported_op`/
-    `io_error` を実機で確認して収録（`read_only` は別ケース）。
-  - `read-only-mode.json` — **`--read-only` 下のエラーコードは2段階に
-    分かれることを実機で確認して収録。** `exec` 経由の書き込みSQLは
-    SQLite 自身の `PRAGMA query_only` 拒否で `sqlite_error` になり、
-    `overwrite`/`load`/`snapshot` のような **op レベルの書き込みだけ** が
-    `read_only` になる。上流仕様書（`docs/spec/san-db-ox_spec_ja.md`
-    §2・§7）でも明記されている区別であり、矛盾ではない
-    （`.claude/rules/testing.md` 側の文言も後日この区別を明記する形に
-    書き換え済み——下記参照）。
-  - `introspection.json` — `tables`（アルファベット順）・`schema`
-    （作成順、アルファベット順ではない）・`schema` の `table` 指定・
-    `dump`/`dump` の `pattern` 指定を実機の出力に合わせて収録。
-    `inspect` は **自プロセスが自分の実行ファイルに埋め込んで起動した
-    データの状態だけを見る**（`exec`/`load` で変更した実行時の DB
-    状態には反応しない）ことを実機で確認し、`source` フィールドは
-    起動時の argv[0] に依存し不安定なため `expect` から意図的に外した。
-  - `params-large-integer-roundtrip.json` — 当初 `known_failing` 付きで
-    収録（下記バグ②のため v0.1.0 では必ず失敗）。**v0.1.1 で修正確認後、
-    `known_failing` を削除済み**（下記）。
-- **`conformance/README_ja.md` に `known_failing` の規約を新設。** 本体
-  側のバグで現時点では失敗するとわかっているケースを、「今の壊れた
-  挙動」に期待値を合わせて緑にするのではなく、本来あるべき期待値の
-  まま記録しておくための仕組み。
+### フェーズ③（Go ドライバ: コーデック層＋直結トランスポート）で行ったこと
 
-**本体 (`san-db-ox`) の実装バグを2件発見 → 上流へ Issue 起票 → `v0.1.1`
-で修正確認まで完了した。** いずれもプロトコルの設計判断ではなく実装
-バグであり、`CLAUDE.md` の方針に従いこのリポジトリ側で独自に回避せず、
-1つの Issue にまとめて報告した:
-**[amisonnet8/san-db-ox#1](https://github.com/amisonnet8/san-db-ox/issues/1)**
-（クローズ済み）。
+`go/sandbox/` パッケージを作成（`naming.md` の module
+`github.com/amisonnet8/san-db-ox-clients/go` / package `sandbox`）。
+**外部依存ゼロ**（標準ライブラリのみ、`go.sum` 不要）。
 
-1. **`exec`/`query` で `sql` を省略するとプロセスがクラッシュする
-   （`exec` のみ）。** `v0.1.0` では `opExec`（`stdio.go:261`）が nil の
-   `sql.Result` に対して無条件で `RowsAffected()` を呼び、nil pointer
-   dereference で panic（exit code 2、接続断）していた。
-2. **`params` 経由の64bit整数（2^53超え）が `REAL` にサイレント破損する。**
-   `v0.1.0` では `INSERT ... VALUES (?)` に
-   `params:[9223372036854775807]` を渡すと `typeof(n)` が `integer`
-   ではなく `real` になり、値も丸められて永続的に破損していた。
-   `.claude/rules/protocol.md` が明記する「64bit整数を倍精度浮動小数点へ
-   デコードしない」契約に本体自身が違反していたケース。
+- **`internal/codec/`** — I/O を一切知らない純粋な符号化・復号層。
+  - `codec.go`: hello 行・リクエスト（1本の flat な struct。本体の
+    パニックトレースで見えた `stdioRequest` 同様、op によらず1つの
+    struct に全フィールドを `omitempty` で持たせる形）・レスポンス
+    envelope（`ok`/`error`）の符号化・復号。
+  - `value.go`: BLOB（1要素配列・Base64）・REAL（`88.0` 形式、
+    `9e999`/`-9e999` の±Inf判定、NaN→`nil`）・64bit整数（`int64` 直接、
+    `float64` を経由しない）の相互変換。**`params` の数値バインドは
+    JSON トークンの小数点有無で決まる**ことを実機で確認した
+    （`params:[88, 88.0]` → `typeof` が `integer`/`real` に分かれる）。
+    これに合わせ、Go の `float64` パラメータは `encoding/json` の既定
+    （`88.0`→`"88"`）を上書きして必ず小数点/指数を残す独自フォーマッタを
+    実装。**`±Inf`/`NaN` を `params` に送ることは実機でも
+    `bad_request`（`value out of range`）になると確認済み**——Go の
+    `json.Marshal` 自身も Inf/NaN を拒否するのと同じ制約なので、
+    エンコード時に明示的なエラーとして弾く（独自の回避策ではなく、
+    双方が既に持つ制約をそのまま反映しただけ）。
+  - `response.go`: op ごとのレスポンスフィールドをデコードする関数群。
+- **`internal/transport/`** — 直結トランスポート。**起動コマンド
+  （`name string, args []string`）は呼び出し元が指定**
+  （`architecture.md` の要求どおり、SSH/Docker 専用コンストラクタは
+  作っていない）。stderr は常にバックグラウンドで drain（既定
+  `io.Discard`、`WithStderr` で差し替え可）。`Close` は段階的シャット
+  ダウン（stdin close → 待機 → SIGTERM → 待機 → SIGKILL）を実装。
+- **`sandbox` パッケージ（公開API）** — `Open(ctx, name, args, opts...)`
+  が hello 行を読み `protocol` 番号を検証。op 名は `naming.md` どおり
+  1:1（`Query`/`Exec`/`Snapshot`/`Load`/`Inspect`/`Tables`/`Schema`/
+  `Dump`/`Overwrite`/`Close`）。**`Overwrite` は `Client`（直結専用）
+  にのみ生えており**、ソケット越しの型が別に生える phase ④以降でも
+  そちらには持たせない設計にしてある（`architecture.md` の「直結でしか
+  成立しないAPIは型で区別する」への対応。現状は直結しか無いので型の
+  分離が自明に成り立っている）。`Client` はゴルーチン1本
+  （読み取りループ→チャネル）＋mutexで直列化し、`id` の無いプロトコルの
+  「応答は常に順序通り」という前提を、呼び出し側に競合させない形で
+  実装している。
+- **`make go-netcheck`** — `go list -deps ./sandbox/internal/codec` に
+  `net`/`net/http` が含まれないことを機械的に検証（`architecture.md`）。
+  現状クリーン。
+- **テスト**（`go-test`、`-race` 常時有効）:
+  - `internal/codec`: I/O 無しの表引きテスト（値の符号化・復号・
+    往復、レスポンス envelope、大きな `last_insert_id` の精度）。
+  - `internal/transport`: `cat`/`sh` を fixture にした素の配管テスト
+    （stdin→stdout・stderr drain 中の非ブロック・3種の Close 経路
+    ——stdin close で即終了・SIGTERM への段階的エスカレーション）。
+  - `sandbox`（実機 `bin/san-db-ox` に対する統合テスト、
+    `SAN_DB_OX_BIN`/`bin/san-db-ox` が無ければ個別に skip）:
+    hello・BLOB/大整数往復・REAL表現・エラーコード・`--read-only`の
+    2段階拒否・snapshot→load・inspectの自プロセス限定性・
+    tables/schema/dump・Close・**Overwrite**（共有の `bin/san-db-ox`
+    を汚さないよう一時ディレクトリへコピーしたバイナリに対して実行）。
+  - **`TestConformanceSuite`** — `conformance/cases/*.json` を
+    `internal/codec`/`internal/transport` 経由（公開APIを介さず）で
+    実行する、Go 版の conformance ランナー。ケース形式どおり
+    `expect` は「オブジェクトは部分一致・それ以外は完全一致」を
+    再帰的に適用し比較（`match_test.go` に意味論だけを独立検証する
+    単体テストも用意）。`known_failing` はケースを実行はするが値の
+    不一致は `t.Logf` に留める一方、読み取り失敗やタイムアウトは
+    xfail扱いにせず `t.Fatalf` する（「バグの種類が変わった」ことに
+    気付けるようにする、という `README_ja.md` の意図どおり）。
+    6ケース全て（既存の `params-large-integer-roundtrip.json` の
+    `known_failing` 解除後の姿を含め）green。
+- **`Makefile`**: `go-build`/`go-vet`/`go-test`（`fetch` 依存）/
+  `go-netcheck` を追加。**`go-test` は `-race` を既定で付ける**
+  （`Client`・直結トランスポートとも内部でゴルーチンを使うため）。
+- **CI**（`.github/workflows/test.yml`）: `go` ジョブを追加
+  （`ubuntu-latest` 限定、`actions/setup-go` → `go-build`/`go-vet`/
+  `go-netcheck`/`go-test`）。マトリクス化はフェーズ⑤以降で検討。
 
-**`v0.1.1`（`compare/v0.1.0...v0.1.1`）で両方とも修正され、本リポジトリ
-側で実機に対して独立に再現・確認した。**
+**保留にした決定（下記「保留事項」参照）**: `PostToolUse` フックの
+提案（`CLAUDE.md` の定めどおり、`Makefile` にビルドターゲットが入った
+このタイミングで提案する）。
 
-- バグ①: `exec`/`query` とも `sql` 省略時に
-  `{"code":"bad_request","message":"missing required field: sql"}` を
-  返すようになり、クラッシュしない。`error-codes.json` に両方とも通常の
-  ケースとして追加した。
-- バグ②: `params:[9223372036854775807]` が `typeof(n) = "integer"` の
-  まま正しく往復することを確認。**確認には注意が必要だった** ——
-  最初 `jq -c` でケースファイルを読み直して再生したところ失敗したが、
-  これは本体の regression ではなく **`jq` 自身が
-  `9223372036854775807` を `9223372036854776000` に丸めていた**
-  ことが原因（`conformance/README_ja.md` が警告する「ケースファイル
-  自体のパースにも64bit精度が要る」の実例）。Go の `json.Number`
-  （`UseNumber()`）でケースファイルを読み直す小さなプログラムで再検証し、
-  正しく修正されていることを確認した。`params-large-integer-roundtrip.json`
-  の `known_failing` は削除済み。
-- Issue のクローズコメントには「本リポジトリの conformance が green に
-  なるまでは open のままにする」とあったが、実際には既に close 済み
-  だった（矛盾には気付いたが、コメント内容を鵜呑みにせず上記のとおり
-  独立に再現・確認する方針で進めた）。
-
-**追従タグを `.claude/rules/protocol.md`・`scripts/fetch-san-db-ox.sh`
-とも `v0.1.1` に更新済み。** `protocol` 番号は `1` のまま変わらず
-（バグ修正のみで、プロトコル設計自体の変更ではないため、CLAUDE.md の
-「まず本体の仕様書を直す」手順は不要と判断した）。
-
-**フェーズ②の残作業も完了した。** `.claude/rules/testing.md` の
-`--read-only` 節を、実機で確認した2段階の区別
-（`overwrite`/`load`/`snapshot` は `read_only`、`exec` の書き込みSQLは
-`sqlite_error`）を明記する形に書き換えた。あわせて `snapshot` op も
-`--read-only` 下で実際に `read_only` で拒否され、ファイルが作られない
-ことを実機で確認し、`read-only-mode.json` にステップを追加した。
-`testing.md` 冒頭の追従タグの直書き（`(現在 v0.1.0)`）も、`protocol.md`
-との二重管理を避けるため削除した。
-
-`go/` は空のディレクトリのまま（フェーズ③で解消）。
-
-**次はフェーズ③（Go ドライバ: コーデック層＋直結トランスポート）。**
+**次はフェーズ④（Go ドライバ: ソケットトランスポート）。**
 
 ## GitHub リポジトリ設定（決定事項、リポジトリ作成時に設定）
 
@@ -167,9 +159,10 @@ stdio結合、SQL学習サンドボックス）を軸に検討した結果:
 
 ## 保留事項
 
-- **`PostToolUse` フックが未設定。** Go ドライバ着手（フェーズ③）で
-  `Makefile` にビルドターゲットが入った時点で提案する（本体と同じ運用）。
-- **`go/` が空のため git に現れない。** ドライバ着手（フェーズ③）で解消。
+- **`PostToolUse` フックを提案済み、返答待ち。** `Makefile` に
+  `go-build`/`go-vet`/`go-test`/`go-netcheck` が入ったこのセッションで
+  提案した（`CLAUDE.md` の定めどおり）。ユーザーの回答に応じて
+  `.claude/settings.json` へ反映する。
 - **PyPI / npm のパッケージ名の予約状況が未確認。** フェーズ⑥（Python）・
   それ以降（TypeScript）で確認する。
 - **devcontainer.json 反映待ちリスト**: 現行コンテナはリビルドせずに
