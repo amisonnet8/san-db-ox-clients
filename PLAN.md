@@ -124,9 +124,8 @@ stdio結合、SQL学習サンドボックス）を軸に検討した結果:
   （`ubuntu-latest` 限定、`actions/setup-go` → `go-build`/`go-vet`/
   `go-netcheck`/`go-test`）。マトリクス化はフェーズ⑤以降で検討。
 
-**保留にした決定（下記「保留事項」参照）**: `PostToolUse` フックの
-提案（`CLAUDE.md` の定めどおり、`Makefile` にビルドターゲットが入った
-このタイミングで提案する）。
+**`CLAUDE.md` の定めどおり `PostToolUse` フックを提案し、承認を得て
+導入済み**（詳細は下記「保留事項」参照）。
 
 **次はフェーズ④（Go ドライバ: ソケットトランスポート）。**
 
@@ -159,10 +158,10 @@ stdio結合、SQL学習サンドボックス）を軸に検討した結果:
 
 ## 保留事項
 
-- **`PostToolUse` フックを提案済み、返答待ち。** `Makefile` に
-  `go-build`/`go-vet`/`go-test`/`go-netcheck` が入ったこのセッションで
-  提案した（`CLAUDE.md` の定めどおり）。ユーザーの回答に応じて
-  `.claude/settings.json` へ反映する。
+- ~~`PostToolUse` フックが未設定~~ → **導入済み。** `go/**/*.go`・
+  `go/go.mod`・`go/go.sum` への Edit/Write 後に `make go-build` を
+  自動実行するフックを `.claude/settings.json` に追加（実際に発火する
+  ことをセンチネルファイルで確認済み）。
 - **PyPI / npm のパッケージ名の予約状況が未確認。** フェーズ⑥（Python）・
   それ以降（TypeScript）で確認する。
 - **devcontainer.json 反映待ちリスト**: 現行コンテナはリビルドせずに
