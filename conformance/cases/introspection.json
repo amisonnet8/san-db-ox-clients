@@ -1,0 +1,59 @@
+{
+  "name": "introspection",
+  "description": "tables/schema/dump op behavior with two tables: tables lists names alphabetically, schema (no argument) lists CREATE statements in creation order (not alphabetical -- deliberately checked so a future reordering is caught), schema with a table argument filters to one, and dump's pattern parameter filters which table's data/DDL is included. Also checks the stable fields of inspect right after a fresh start with no snapshot loaded -- inspect reflects the running binary's own embedded data (protocol.md: inspect は自プロセスの状態のみ), not live SQL state mutated via exec, so has_data/data_length/version stay at their empty defaults even after CREATE TABLE. The `source` field is deliberately not asserted here: it echoes the invoked binary's own argv[0] basename, which is not stable across how a runner launches the process.",
+  "args": [],
+  "steps": [
+    {
+      "request": { "op": "inspect" },
+      "expect": { "ok": true, "has_data": false, "read_only": false, "data_length": null, "version": null }
+    },
+    {
+      "request": { "op": "exec", "sql": "CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT)" },
+      "expect": { "ok": true }
+    },
+    {
+      "request": { "op": "exec", "sql": "CREATE TABLE logs(id INTEGER PRIMARY KEY, msg TEXT)" },
+      "expect": { "ok": true }
+    },
+    {
+      "request": { "op": "exec", "sql": "INSERT INTO users(id, name) VALUES (1, 'alice')" },
+      "expect": { "ok": true, "rows_affected": 1 }
+    },
+    {
+      "request": { "op": "tables" },
+      "expect": { "ok": true, "tables": ["logs", "users"] }
+    },
+    {
+      "request": { "op": "schema" },
+      "expect": {
+        "ok": true,
+        "schema": [
+          "CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT)",
+          "CREATE TABLE logs(id INTEGER PRIMARY KEY, msg TEXT)"
+        ]
+      }
+    },
+    {
+      "request": { "op": "schema", "table": "users" },
+      "expect": { "ok": true, "schema": ["CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT)"] }
+    },
+    {
+      "request": { "op": "dump" },
+      "expect": {
+        "ok": true,
+        "sql": "PRAGMA foreign_keys=OFF;\nBEGIN TRANSACTION;\nCREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);\nINSERT INTO \"users\" VALUES(1,'alice');\nCREATE TABLE logs(id INTEGER PRIMARY KEY, msg TEXT);\nCOMMIT;\n"
+      }
+    },
+    {
+      "request": { "op": "dump", "pattern": "users" },
+      "expect": {
+        "ok": true,
+        "sql": "PRAGMA foreign_keys=OFF;\nBEGIN TRANSACTION;\nCREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);\nINSERT INTO \"users\" VALUES(1,'alice');\nCOMMIT;\n"
+      }
+    },
+    {
+      "request": { "op": "inspect" },
+      "expect": { "ok": true, "has_data": false, "data_length": null, "version": null }
+    }
+  ]
+}

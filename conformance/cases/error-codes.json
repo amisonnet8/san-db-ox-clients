@@ -1,0 +1,27 @@
+{
+  "name": "error-codes",
+  "description": "Exercises 4 of the 5 stable error codes (protocol.md): sqlite_error (bad SQL), bad_request (wrong params shape), unsupported_op (unknown op), io_error (load from a nonexistent path). read_only is covered separately in read-only-mode.json since it requires the process to be started with --read-only. `exec` with a missing `sql` field is deliberately not exercised here -- it currently crashes the whole process instead of returning bad_request (see PLAN.md's known-issues note); the case format has no way to express an expected crash.",
+  "args": [],
+  "steps": [
+    {
+      "request": { "op": "query", "sql": "SELECT * FROM nope" },
+      "expect": { "ok": false, "error": { "code": "sqlite_error" } }
+    },
+    {
+      "request": { "op": "query", "sql": "SELECT 1", "params": "not-an-array" },
+      "expect": { "ok": false, "error": { "code": "bad_request" } }
+    },
+    {
+      "request": { "op": "not_a_real_op" },
+      "expect": { "ok": false, "error": { "code": "unsupported_op" } }
+    },
+    {
+      "request": { "op": "load", "path": "/nonexistent/path/really-not-there.db" },
+      "expect": { "ok": false, "error": { "code": "io_error" } }
+    },
+    {
+      "request": { "op": "query", "sql": "SELECT 1" },
+      "expect": { "ok": true, "rows": [[1]] }
+    }
+  ]
+}

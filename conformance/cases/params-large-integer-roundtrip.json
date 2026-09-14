@@ -1,0 +1,21 @@
+{
+  "name": "params-large-integer-roundtrip",
+  "description": "A 64-bit integer beyond 2^53-1 passed via params should round-trip through INSERT/SELECT unchanged, exactly like the BLOB round-trip in query-roundtrip.json (protocol.md's round-trip symmetry, testing.md's explicit large-integer round-trip check). Currently fails: san-db-ox v0.1.0 decodes params numbers through float64, silently corrupting the value and changing the stored SQLite column type from INTEGER to REAL.",
+  "known_failing": "upstream issue not yet filed (gh CLI added to devcontainer but not yet authenticated in this environment) -- see PLAN.md's known-issues note for the repro and file against amisonnet8/san-db-ox once possible, then paste the issue URL here",
+  "args": [],
+  "steps": [
+    {
+      "request": { "op": "exec", "sql": "CREATE TABLE big(n INTEGER)" },
+      "expect": { "ok": true }
+    },
+    {
+      "request": { "op": "exec", "sql": "INSERT INTO big VALUES (?)", "params": [9223372036854775807] },
+      "expect": { "ok": true, "rows_affected": 1 }
+    },
+    {
+      "request": { "op": "query", "sql": "SELECT n, typeof(n) FROM big" },
+      "expect": { "ok": true, "rows": [[9223372036854775807, "integer"]] },
+      "expect_raw": ["9223372036854775807"]
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "name": "real-and-integer-representation",
+  "description": "REAL values keep a decimal point (88.0, not 88); +Inf/-Inf are the literal 9e999/-9e999; NaN is JSON null; a 64-bit integer beyond 2^53-1 written as a SQL literal round-trips through query without precision loss (protocol.md's value-representation rules).",
+  "args": [],
+  "steps": [
+    {
+      "request": { "op": "query", "sql": "SELECT 88.0" },
+      "expect": { "ok": true, "rows": [[88.0]] },
+      "expect_raw": ["88.0"]
+    },
+    {
+      "request": { "op": "query", "sql": "SELECT 1e308 * 10" },
+      "expect": { "ok": true },
+      "expect_raw": ["9e999"]
+    },
+    {
+      "request": { "op": "query", "sql": "SELECT -1e308 * 10" },
+      "expect": { "ok": true },
+      "expect_raw": ["-9e999"]
+    },
+    {
+      "request": { "op": "query", "sql": "SELECT (1e308 * 10) - (1e308 * 10)" },
+      "expect": { "ok": true, "rows": [[null]] }
+    },
+    {
+      "request": { "op": "query", "sql": "SELECT 9223372036854775807" },
+      "expect": { "ok": true, "columns": ["9223372036854775807"] },
+      "expect_raw": ["9223372036854775807"]
+    },
+    {
+      "request": { "op": "query", "sql": "SELECT -9223372036854775808" },
+      "expect": { "ok": true },
+      "expect_raw": ["-9223372036854775808"]
+    }
+  ]
+}

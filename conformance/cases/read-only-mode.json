@@ -1,0 +1,27 @@
+{
+  "name": "read-only-mode",
+  "description": "--read-only rejects writes at two different levels, distinguished by error code (verified against the upstream spec, not just this repo's testing.md paraphrase). SQL-level writes sent via `exec` are rejected by SQLite's own PRAGMA query_only and surface as sqlite_error. Op-level writes (`overwrite`, `load`) are rejected by the stdio server itself before touching SQLite and surface as read_only. Reads keep working, and the process stays alive through both kinds of rejection.",
+  "args": ["--read-only"],
+  "steps": [
+    {
+      "request": { "op": "exec", "sql": "CREATE TABLE t(x INTEGER)" },
+      "expect": { "ok": false, "error": { "code": "sqlite_error" } }
+    },
+    {
+      "request": { "op": "overwrite" },
+      "expect": { "ok": false, "error": { "code": "read_only" } }
+    },
+    {
+      "request": { "op": "load", "path": "/nonexistent/does-not-matter.db" },
+      "expect": { "ok": false, "error": { "code": "read_only" } }
+    },
+    {
+      "request": { "op": "query", "sql": "SELECT 1" },
+      "expect": { "ok": true, "rows": [[1]] }
+    },
+    {
+      "request": { "op": "inspect" },
+      "expect": { "ok": true, "read_only": true }
+    }
+  ]
+}
