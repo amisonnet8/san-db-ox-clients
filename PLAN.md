@@ -82,10 +82,11 @@ stdio結合、SQL学習サンドボックス）を軸に検討した結果:
   挙動」に期待値を合わせて緑にするのではなく、本来あるべき期待値の
   まま記録しておくための仕組み。
 
-**本体 (`san-db-ox` v0.1.0) の実装バグを2件発見した。** いずれも
-プロトコルの設計判断ではなく実装バグであり、`CLAUDE.md` の方針に従い
-このリポジトリ側で独自に回避せず、上流へ Issue を起票する方針（ユーザー
-承認済み、1つの Issue にまとめる）。
+**本体 (`san-db-ox` v0.1.0) の実装バグを2件発見し、上流へ Issue 起票
+済み。** いずれもプロトコルの設計判断ではなく実装バグであり、
+`CLAUDE.md` の方針に従いこのリポジトリ側で独自に回避せず、1つの Issue
+にまとめて報告した:
+**[amisonnet8/san-db-ox#1](https://github.com/amisonnet8/san-db-ox/issues/1)**。
 
 1. **`exec` で `sql` を省略するとプロセスがクラッシュする。**
    `bad_request` を返すべきところ、`opExec`（`stdio.go:261`）が nil の
@@ -107,18 +108,14 @@ stdio結合、SQL学習サンドボックス）を軸に検討した結果:
    `params-large-integer-roundtrip.json` として `known_failing` 付きで
    収録済み（上記）。
 
-Issue 文面はドラフト済み（スクラッチパッドに保存、内容はこのセッションの
-やり取り参照）。**`gh` CLI をこのセッションでインストールした
-（`.devcontainer/postCreate.sh` にも反映済み）が、`gh auth login` は
-対話的な OAuth フローが必要でこの非対話セッションでは実行できず、
-未認証のまま。** 認証後、`gh issue create` で amisonnet8/san-db-ox へ
-起票し、`params-large-integer-roundtrip.json` の `known_failing` の値を
-実際の Issue URL に差し替えること。
+`params-large-integer-roundtrip.json` の `known_failing` は、実際の
+Issue URL（上記 #1）に差し替え済み。
 
 `go/` は空のディレクトリのまま（フェーズ③で解消）。
 
-**次はフェーズ②の残り（Issue 起票・ケースの棚卸し）を終えるか、
-フェーズ③（Go ドライバ）へ進む。**
+**次はフェーズ②の残り（`.claude/rules/testing.md` の `--read-only`
+記述の正確化、下記「未確認事項」参照）を終えるか、フェーズ③
+（Go ドライバ）へ進む。**
 
 ## GitHub リポジトリ設定（決定事項、リポジトリ作成時に設定）
 
@@ -164,17 +161,16 @@ Issue 文面はドラフト済み（スクラッチパッドに保存、内容�
 - **`go/` が空のため git に現れない。** ドライバ着手（フェーズ③）で解消。
 - **PyPI / npm のパッケージ名の予約状況が未確認。** フェーズ⑥（Python）・
   それ以降（TypeScript）で確認する。
-- **本体 (san-db-ox) への Issue 起票が未完了。** `gh` は導入済みだが
-  未認証（下記）。ユーザーが `gh auth login`（または `GH_TOKEN`）で認証
-  後、`gh issue create -R amisonnet8/san-db-ox` で起票すること。文面は
-  このセッションで作成済み（要点は「現在地」のバグ①②参照）。起票後、
-  `conformance/cases/params-large-integer-roundtrip.json` の
-  `known_failing` の値を実際の Issue URL に差し替える。
-- **`exec` の `sql` 省略時クラッシュ（バグ①）のケース化を保留。**
-  現在の conformance ケース形式は「1ステップ＝1つの JSON 応答行」を
-  前提にしており、プロセスクラッシュを期待値として表現する手段がない。
-  上流で `bad_request` を返すよう修正されたら、`error-codes.json` に
-  通常のケースとして追加する（`known_failing` は不要になる）。
+- **`exec` の `sql` 省略時クラッシュ（バグ①、
+  [amisonnet8/san-db-ox#1](https://github.com/amisonnet8/san-db-ox/issues/1)）
+  のケース化を保留。** 現在の conformance ケース形式は「1ステップ＝1つの
+  JSON 応答行」を前提にしており、プロセスクラッシュを期待値として表現
+  する手段がない。上流で `bad_request` を返すよう修正されたら、
+  `error-codes.json` に通常のケースとして追加する。
+- **`params-large-integer-roundtrip.json`（バグ②）の `known_failing` を
+  外す。** 上流 Issue #1 の修正がリリースされ、追従タグ
+  （`.claude/rules/protocol.md`）を更新したタイミングで、このケースが
+  green になることを確認して `known_failing` フィールドを削除する。
 - **devcontainer.json 反映待ちリスト**: 現行コンテナはリビルドせずに
   開発を進める方針（都度手動でインストール・設定して進め、区切りでまとめて
   `devcontainer.json` へ反映する）。session内で手動インストール・設定を
