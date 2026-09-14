@@ -8,20 +8,19 @@ import (
 )
 
 // SocketClient is a connection to a SanDBox process reached over a TCP or
-// UNIX domain socket exposed by socat or similar
-// (.claude/rules/architecture.md, .claude/rules/connectivity.md). Unlike
-// Client, it has no Overwrite or ExitCode method: overwrite risks multiple
-// processes writing the same executable path at once when several clients
-// connect through the same listener, and there is no child process on
-// this end to report an exit code for.
+// UNIX domain socket exposed by socat or similar. Unlike Client, it has no
+// Overwrite or ExitCode method: overwrite risks multiple processes writing
+// the same executable path at once when several clients connect through
+// the same listener, and there is no child process on this end to report
+// an exit code for.
 //
-// The assumptions that come with this transport
-// (.claude/rules/connectivity.md, upstream's own spec §8) still apply:
-// each connection is served by its own process with its own database (a
+// The assumptions that come with this transport still apply: each
+// connection is served by its own process with its own database (a
 // consequence of how socat's fork option works, not something SanDBox
 // itself arranges), and there is no authentication at this layer -- any
 // exposure beyond a trusted network should combine --read-only with TLS
-// client authentication and should restrict source addresses.
+// client authentication and should restrict source addresses. See
+// docs/usage/connecting_ja.md for worked examples.
 type SocketClient struct {
 	*session
 }
@@ -47,9 +46,8 @@ func OpenSocket(ctx context.Context, network, address string) (*SocketClient, er
 // OpenSocketConn wraps an already-established net.Conn, reads its hello
 // line, and returns a ready-to-use SocketClient. This is the seam for
 // connections OpenSocket can't build directly -- most notably a
-// TLS-wrapped dial (crypto/tls.Dial) for the mutual-TLS setup
-// .claude/rules/connectivity.md describes -- without this package needing
-// a TLS-specific constructor.
+// TLS-wrapped dial (crypto/tls.Dial) for mutual-TLS authentication --
+// without this package needing a TLS-specific constructor.
 func OpenSocketConn(ctx context.Context, nc net.Conn) (*SocketClient, error) {
 	s, err := newSession(ctx, transport.NewSocket(nc))
 	if err != nil {

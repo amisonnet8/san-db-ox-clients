@@ -1,16 +1,17 @@
 # 接続方法（実例集）
 
-`.claude/rules/connectivity.md` が定める方針・判断根拠を、実際にコピーして
-使えるコマンド例に落とし込んだもの。読む前に `connectivity.md` を読むこと
-——ここでは「なぜその設定にするか」は繰り返さず、「実際どう打つか」だけを
-書く。
+SanDBox（`san-db-ox --serve-stdio`）へ接続する方法を、実際にコピーして
+使えるコマンド例とともにまとめたもの。直結（子プロセスとして起動する）と、
+socat 等で外付けされたソケットへの接続の2種類がある。SanDBox 自身は
+ネットワーク待受を一切持たない設計なので、外部公開時のセキュリティは
+socat・SSH 側の設定で作り込む必要がある——このドキュメントが各パターンの
+「どう安全にするか」も含めて説明する。
 
 **`<!-- doctest -->` が直前に付いているコマンド例だけ、`make test-docs`
-（CI の `docs` ジョブ）で実際に動かして検証している。** それ以外（SSH・
-socat・TLS・Docker の例）は `.claude/rules/testing.md` の方針により自動
-検証の対象外——鍵・証明書・待受プロセスの用意が要り、CI 環境で毎回再現する
-コストが見合わないため。その代わり、このドキュメントを書く際にすべて手元
-で実際に動かして確認済み。
+で実際に動かして検証している。** それ以外（SSH・socat・TLS・Docker の
+例）は、鍵・証明書・待受プロセスの用意が要り CI 環境で毎回再現するコストが
+見合わないため自動検証の対象外だが、このドキュメントを書く際にすべて手元
+で実際に動かして確認済み（検証内容はそれぞれの節に記載）。
 
 ## 直結
 
@@ -46,8 +47,12 @@ c, err := sandbox.Open(ctx, "bin/san-db-ox", []string{"--serve-stdio"})
 ssh user@host san-db-ox --serve-stdio
 ```
 
-Go ドライバも起動コマンドを差し替えるだけで同じトランスポートを使う
-（`.claude/rules/architecture.md`）:
+socat も TLS 証明書もポート開放も要らず、認証と暗号化を SSH にそのまま
+乗せられる——SanDBox がネットワーク待受を持たない設計を最も素直に活かせる
+経路であり、外部公開が要る場面ではまずこれを検討する。
+
+Go ドライバも、起動するコマンドと引数を差し替えるだけで同じトランス
+ポートを使い回せる（SSH 専用のコンストラクタは存在しない）:
 
 ```go
 c, err := sandbox.Open(ctx, "ssh", []string{"user@host", "san-db-ox", "--serve-stdio"})
@@ -56,15 +61,21 @@ c, err := sandbox.Open(ctx, "ssh", []string{"user@host", "san-db-ox", "--serve-s
 ### SSH forced command（推奨経路）
 
 `authorized_keys` に1行加えるだけで、認証・認可・接続元制限・読み取り
-専用の強制が揃う（`connectivity.md` 参照）。
+専用の強制が揃う。
 
 ```
 restrict,command="/usr/local/bin/san-db-ox --read-only --serve-stdio" ssh-ed25519 AAAA... sandbox-readonly
 ```
 
-この鍵で接続する側は、コマンドを何も指定しなくてよい
-（`SSH_ORIGINAL_COMMAND` に何を送っても forced command だけが実行される
-ため）:
+- **`command=`** — この鍵で接続した場合、クライアントが何を要求しても
+  このコマンドだけが実行される。クライアントが送ろうとしたコマンドは
+  `SSH_ORIGINAL_COMMAND` 環境変数に入るだけで実行されないので、
+  クライアント側はコマンドを何も指定しなくてよい。
+- **`restrict`**（OpenSSH 7.2 以降） — ポートフォワード・エージェント
+  転送・PTY 割り当て・X11 転送等をすべて無効化する。この鍵では SanDBox に
+  繋ぐこと以外できなくなる。
+- **`from=`** を先頭に足せば、接続元を CIDR やホスト名パターンでも
+  絞れる。
 
 ```bash
 ssh -i sandbox-readonly-key user@host
@@ -88,8 +99,9 @@ devcontainer に導入済み。テストのたびに `sudo /usr/sbin/sshd -p <po
   forced command 経路に対しても他の起動コマンドと同じように使えることを
   確認した（SSH 専用のコードパスは存在しない）。
 
-読み書き両方を許す鍵と読み取り専用の鍵は、`authorized_keys` の別エントリ
-（別の鍵ペア）として分けて発行すること（`connectivity.md` 参照）。
+**読み書き両方を許す鍵と読み取り専用の鍵は、`authorized_keys` の別エントリ
+（別の鍵ペア）として分けて発行すること。** 1つの鍵に両方の権限を持たせて
+呼び出し側の判断に委ねない。
 
 ### Docker
 
@@ -113,6 +125,21 @@ c, err := sandbox.Open(ctx, "kubectl", []string{"exec", "-i", pod, "--", "san-db
 
 ## socat 経由（ソケット）
 
+socat を挟むと、直結では出せない TCP/UNIX ソケットとしてクライアントに
+見せられる。ただし2点、直結には無い前提が付いてくる。
+
+- **接続ごとに別プロセス・別DBになる。** これは socat の `fork`
+  オプション自身の挙動（接続を受けるたびに新しい子プロセスを起動する）で
+  あり、SanDBox 側に「複数クライアントで1つの DB を共有する」仕組みは
+  無い。1つの DB を複数クライアントで扱いたい用途には向かない。
+- **認証が一切存在しない。** 到達できる者は誰でも任意の SQL を実行
+  できる。以下の TLS/接続元制限のいずれかと必ず組み合わせること。
+
+**自身の実行ファイルを上書きする `overwrite` op は socat 経由では
+使わない。** 複数の子プロセスが同じ実行ファイルパスへ同時に書きに行く
+リスクがあるため（Go ドライバでは、そもそも `*SocketClient` に
+`Overwrite` メソッド自体が無く、型の時点で呼べない）。
+
 ### 素の TCP/UNIX ソケット
 
 ```bash
@@ -131,8 +158,10 @@ c, err := sandbox.OpenSocket(ctx, "tcp", "127.0.0.1:5432")
 
 ### TLS/mTLS（クライアント証明書による認証）
 
-以下は自己署名の CA・サーバ証明書・クライアント証明書一式をその場で
-作る例（動作確認用。実運用では組織の CA を使う）。
+socat 自身に認証機構は無いため、外部公開するなら TLS のクライアント
+証明書検証を事実上の認証として使う。以下は自己署名の CA・サーバ証明書・
+クライアント証明書一式をその場で作る例（動作確認用。実運用では組織の CA
+を使う）。
 
 ```bash
 # CA
@@ -159,19 +188,20 @@ openssl x509 -req -in client-req.pem -CA ca.pem -CAkey ca-key.pem \
 cat client-key.pem client-cert.pem > client.pem
 ```
 
-サーバ（`verify=1` が既定値。**`verify=0` にしない**——`connectivity.md`
-参照）:
-
 ```bash
 socat OPENSSL-LISTEN:5432,fork,cert=server.pem,cafile=ca.pem,verify=1 \
       EXEC:"san-db-ox --read-only --serve-stdio"
 ```
 
+**`verify=1`（既定値）によるクライアント証明書の検証が、事実上の認証
+機構になる。** `verify=0` にして暗号化だけ有効にすると「盗聴はされないが
+誰でも繋げる」状態になり、SanDBox 自身に認証機構が無い以上、無防備な状態
+とほぼ変わらない。**`verify` を無効化しないこと。**
+
 **実際に検証した内容**: 正しい `client.pem` での接続は通り hello 行が
 読める一方、CA チェーンに繋がらない別の自己署名証明書（クライアント証明書
 とは無関係な単独の証明書）での接続は `SSL_accept(): certificate verify
-failed` としてサーバ側に拒否されることを確認した——`verify=1` が実際に
-「事実上の認証機構」として機能している。
+failed` としてサーバ側に拒否されることを確認した。
 
 Go ドライバは TLS 専用のコンストラクタを持たない代わりに、
 `crypto/tls.Dial` の結果をそのまま渡せる（`OpenSocketConn`）:
@@ -208,16 +238,31 @@ socat TCP-LISTEN:5432,fork,range=10.0.0.0/8 EXEC:"san-db-ox --read-only --serve-
 `refusing connection from ... due to range option` として即座に拒否され、
 範囲内（`range=127.0.0.0/8`）なら通常どおり通ることを確認した。
 
-`tcpwrap[=<name>]`（`/etc/hosts.allow`/`/etc/hosts.deny` との連携）は
-システム全体の設定ファイルを書き換える必要があるため、ここでは実測せず
-`connectivity.md` の記載に留める。
+`tcpwrap[=<name>]`（`/etc/hosts.allow`/`/etc/hosts.deny` による接続元
+制御との連携）というオプションもあるが、システム全体の設定ファイルを
+書き換える必要があるため実測はしていない。
 
-**socat のオプションだけに頼らず、OS のファイアウォールを最終防衛線として
-併用すること**（`connectivity.md` 参照）。
+**socat のオプションだけに頼らず、OS のファイアウォール（`iptables`/
+`nftables`/クラウドのセキュリティグループ等）を最終防衛線として併用する
+こと。** socat の起動コマンドを1箇所書き間違えただけで公開範囲が広がる、
+という事故はコマンドライン1行の設定にはつきものであり、外側にもう1段の
+制限を持たせておく。
 
 ### `--read-only` との併用
 
 このドキュメントの例はすべて `--read-only` を付けている。外部公開する
-SanDBox は、これを基本の構成とすること（`connectivity.md`「`--read-only`
-との併用を前提にする」参照）。書き込みを許す場合は、上記の TLS クライアント
-認証と組み合わせ、かつ接続元を最大限絞ること。
+SanDBox は、これを基本の構成とすること。書き込みを許す外部公開が必要な
+場合は、上記の TLS クライアント認証と組み合わせ、かつ接続元を最大限
+絞ること。
+
+## SSH のその他の使い方（補助）
+
+- **ポートフォワード** — socat をループバック限定（`bind=127.0.0.1`）で
+  立て、クライアント側から `ssh -L 15432:127.0.0.1:5432 user@host` で
+  トンネルを通す。SSH が暗号化・認証を担い、socat 自体はループバック
+  限定なので外部からは直接見えない。
+- **SSH 自体の失敗と SanDBox 側のエラーは区別が付かない場合がある** —
+  SSH 自体の失敗（接続不能・ホスト鍵不一致・認証失敗等）は終了コード
+  `255` を返すが、リモートコマンド（`san-db-ox`）自身が `255` で終了
+  した場合と区別が付かない。終了コードだけで「SanDBox 側のエラーだ」と
+  断定せず、stderr の内容と合わせて判断すること。

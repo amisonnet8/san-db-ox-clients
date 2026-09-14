@@ -19,8 +19,7 @@ stdio プロトコルは行区切りJSON（JSON Lines）であり、サブプロ
 | `protocol` 番号 | `1` |
 
 ドライバのバージョンと本体のバージョンは連動しない。対応関係はこの
-`protocol` 番号で表す。追従している本体のタグを含む詳細は
-[`.claude/rules/protocol.md`](.claude/rules/protocol.md) を参照。
+`protocol` 番号で表す。
 
 ## 言語別の状況
 
@@ -34,11 +33,11 @@ stdio プロトコルは行区切りJSON（JSON Lines）であり、サブプロ
 
 直結（子プロセスの起動コマンドを差し替えることで、ローカル・SSH・
 Docker・Kubernetes のいずれにも同じトランスポートで対応する）と、
-socat 等で外付けされたソケットへの接続の2種類をサポートする。認証の
-無い経路を外部公開する際のセキュリティ設定（SSH forced command・TLS
-クライアント認証等）を含め、詳細は
-[`.claude/rules/connectivity.md`](.claude/rules/connectivity.md) を
-参照。上記すべてのパターンについて、実際にコピーして使えるコマンド例を
+socat 等で外付けされたソケットへの接続の2種類をサポートする。SanDBox
+自身もこのトランスポート層も認証機構を持たないため、信頼できる
+ネットワークの外に公開する場合は SSH forced command・TLS クライアント
+認証・接続元IP制限・`--read-only` といったセキュリティ設定が別途必要に
+なる。上記すべてのパターンについて、実際にコピーして使えるコマンド例を
 [`docs/usage/connecting_ja.md`](docs/usage/connecting_ja.md) に用意した。
 
 ## ライセンス

@@ -2,10 +2,9 @@ package sandbox
 
 // Row is one query result row. Each element is nil, int64, float64,
 // string, or []byte, matching SQLite's NULL/INTEGER/REAL/TEXT/BLOB storage
-// classes (.claude/rules/protocol.md). A REAL that is NaN is
-// indistinguishable from SQL NULL once decoded -- both arrive over the
-// wire as the JSON literal null (that is upstream's own representation,
-// not a limitation added here).
+// classes. A REAL that is NaN is indistinguishable from SQL NULL once
+// decoded -- both arrive over the wire as the JSON literal null (that is
+// upstream's own representation, not a limitation added here).
 type Row []any
 
 // QueryResult is query's result.
@@ -27,9 +26,9 @@ type SnapshotResult struct {
 
 // InspectResult is inspect's result. It describes the running process's
 // own embedded data, not the live SQL state -- CREATE TABLE/INSERT/load
-// against a running process do not change what a later Inspect reports
-// (verified in Phase 2's introspection.json conformance case). Version and
-// DataLength are nil when the process has no embedded snapshot data.
+// against a running process do not change what a later Inspect reports.
+// Version and DataLength are nil when the process has no embedded
+// snapshot data.
 type InspectResult struct {
 	HasData    bool
 	Version    *int64

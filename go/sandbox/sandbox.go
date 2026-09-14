@@ -1,34 +1,33 @@
 // Package sandbox is a client for SanDBox (github.com/amisonnet8/san-db-ox):
-// it connects over the stdio protocol (.claude/rules/protocol.md), either
-// by launching the given command as a child process (Open, direct-connect)
-// or by dialing a socket exposed by something like socat (OpenSocket,
-// .claude/rules/architecture.md, .claude/rules/connectivity.md).
+// it connects over SanDBox's stdio protocol, either by launching the given
+// command as a child process (Open, direct-connect) or by dialing a socket
+// exposed by something like socat (OpenSocket).
 //
 // A driver is a convenience, not a prerequisite -- the wire protocol is
-// plain JSON Lines, and nothing here does more than give it a typed Go API
-// (see the CLAUDE.md at the repository root). Op names mirror the
-// protocol's own op names 1:1 (.claude/rules/naming.md): Query, Exec,
+// plain JSON Lines, and nothing here does more than give it a typed Go
+// API. Op names mirror the protocol's own op names 1:1: Query, Exec,
 // Snapshot, Load, Inspect, Tables, Schema, Dump, Overwrite, Close.
 //
 // # Connecting anywhere the same way
 //
 // Open takes the command to launch, not a fixed "local" assumption, so the
 // same call works locally, over SSH, through Docker, or via kubectl exec
-// just by changing the command and args (.claude/rules/architecture.md,
-// .claude/rules/connectivity.md):
+// just by changing the command and args:
 //
 //	sandbox.Open(ctx, "san-db-ox", []string{"--serve-stdio"})
 //	sandbox.Open(ctx, "ssh", []string{"user@host", "san-db-ox", "--serve-stdio"})
 //	sandbox.Open(ctx, "docker", []string{"run", "-i", "--rm", image, "--serve-stdio"})
 //
-// There are no SSH- or Docker-specific constructors.
+// There are no SSH- or Docker-specific constructors. See
+// docs/usage/connecting_ja.md in the repository for worked examples of
+// each, including socket-based connections and their security setup.
 //
 // # Direct-connect-only APIs
 //
 // A child process's stderr, exit code, and the overwrite op only make
-// sense over a direct connection (.claude/rules/architecture.md) -- they
-// live on *Client, not on the Conn interface both client types satisfy, so
-// a *SocketClient simply has no Overwrite or ExitCode method to call.
+// sense over a direct connection -- they live on *Client, not on the Conn
+// interface both client types satisfy, so a *SocketClient simply has no
+// Overwrite or ExitCode method to call.
 package sandbox
 
 import (
@@ -43,20 +42,19 @@ import (
 	"github.com/amisonnet8/san-db-ox-clients/go/sandbox/internal/transport"
 )
 
-// supportedProtocol is the only protocol number this driver will talk to
-// (.claude/rules/protocol.md: "protocol が自分の知らない番号であれば、
-// それ以上通信せずエラーとする").
+// supportedProtocol is the only protocol number this driver will talk to.
+// A hello line advertising any other number is refused before any request
+// is sent.
 const supportedProtocol = codec.Protocol
 
 // closeTimeout is how long each stage of a Close waits before escalating
-// (Direct) or before giving up on a graceful shutdown (Socket)
-// (.claude/rules/testing.md).
+// (Direct) or before giving up on a graceful shutdown (Socket).
 const closeTimeout = 5 * time.Second
 
 // Conn is what every connection to a SanDBox process can do, regardless of
 // transport. Overwrite and ExitCode are deliberately not part of this
-// interface -- they only mean something over a direct connection
-// (.claude/rules/architecture.md), and are exposed only on *Client.
+// interface -- they only mean something over a direct connection, and are
+// exposed only on *Client.
 type Conn interface {
 	Query(ctx context.Context, sql string, params ...any) (*QueryResult, error)
 	Exec(ctx context.Context, sql string, params ...any) (*ExecResult, error)
@@ -112,10 +110,9 @@ func newSession(ctx context.Context, t transport.Conn) (*session, error) {
 }
 
 // readLoop is the session's single background reader: responses are framed
-// one per line and always arrive in request order
-// (.claude/rules/protocol.md), so one goroutine feeding a channel is
-// enough -- callers never need to race independent reads against each
-// other.
+// one per line and always arrive in request order, so one goroutine
+// feeding a channel is enough -- callers never need to race independent
+// reads against each other.
 func (s *session) readLoop() {
 	sc := newLineScanner(s.t)
 	for sc.Scan() {
@@ -189,8 +186,7 @@ func (s *session) call(ctx context.Context, req *codec.Request) (codec.Fields, e
 }
 
 // Query runs a SQL query and returns its result set in full (the protocol
-// has no cursor -- .claude/rules/protocol.md deliberately does not offer
-// one, see "こちら側で勝手に足さないもの").
+// has no cursor -- there is no way to fetch a result set incrementally).
 func (s *session) Query(ctx context.Context, sql string, params ...any) (*QueryResult, error) {
 	encodedParams, err := codec.EncodeParams(params)
 	if err != nil {
@@ -272,7 +268,7 @@ func (s *session) Load(ctx context.Context, path string) error {
 
 // Inspect reports on the running process's own embedded data. It is not a
 // general-purpose "inspect any path" op -- it only ever describes this
-// process (.claude/rules/protocol.md).
+// process.
 func (s *session) Inspect(ctx context.Context) (*InspectResult, error) {
 	fields, err := s.call(ctx, &codec.Request{Op: "inspect"})
 	if err != nil {
@@ -354,9 +350,8 @@ func (s *session) Close(ctx context.Context) error {
 // Client is a direct-connect connection to a running SanDBox process. A
 // Client is not safe for concurrent use by multiple goroutines: the
 // protocol has no request id, so responses can only be matched to
-// requests by strict ordering (.claude/rules/protocol.md) -- session
-// serializes calls with an internal lock rather than exposing that
-// footgun.
+// requests by strict ordering -- session serializes calls with an
+// internal lock rather than exposing that footgun.
 type Client struct {
 	*session
 	d *transport.Direct
@@ -372,8 +367,8 @@ type openOptions struct {
 }
 
 // WithStderr copies the child process's stderr to w. Stderr is always
-// drained regardless (.claude/rules/protocol.md) -- this only controls
-// where the drained bytes go, e.g. for logging or diagnostics.
+// drained regardless -- this only controls where the drained bytes go,
+// e.g. for logging or diagnostics.
 func WithStderr(w io.Writer) Option {
 	return func(o *openOptions) {
 		o.transportOpts = append(o.transportOpts, transport.WithStderr(w))
@@ -419,16 +414,17 @@ func Open(ctx context.Context, name string, args []string, opts ...Option) (*Cli
 
 // Overwrite replaces the running process's own executable with one
 // embedding the current database, then exits. This only makes sense over a
-// direct-connect process (.claude/rules/architecture.md: "overwrite は
-// socat 経由で使わせない") -- it lives here on Client, not on Conn, so a
+// direct-connect process -- socat-fronted sockets can have several
+// clients connect through the same listener, and multiple processes
+// writing the same executable path at once is exactly what this op
+// shouldn't risk -- so it lives here on Client, not on Conn, and a
 // *SocketClient has no Overwrite method to call.
 func (c *Client) Overwrite(ctx context.Context) error {
 	if _, err := c.call(ctx, &codec.Request{Op: "overwrite"}); err != nil {
 		return err
 	}
-	// A successful overwrite ends the connection from the server's side
-	// (.claude/rules/protocol.md: "応答後にプロセス終了"); reap it so no
-	// zombie is left behind.
+	// A successful overwrite ends the connection from the server's side;
+	// reap it so no zombie is left behind.
 	c.mu.Lock()
 	c.closed = true
 	c.mu.Unlock()
@@ -437,16 +433,15 @@ func (c *Client) Overwrite(ctx context.Context) error {
 
 // ExitCode returns the child process's exit code. Only meaningful after
 // Close or Overwrite has returned. It is only available over a direct
-// connection (.claude/rules/architecture.md) -- a *SocketClient has no
-// child process to report on.
+// connection -- a *SocketClient has no child process to report on.
 func (c *Client) ExitCode() int {
 	return c.d.ExitCode()
 }
 
-// maxLineSize is sized for the protocol's stated line limit
-// (.claude/rules/protocol.md: "1行の上限は本体実装で 1 MiB"), with
-// headroom above it -- the default 64KiB bufio.Scanner buffer would
-// otherwise fail on a large query result well within the documented limit.
+// maxLineSize is sized for the protocol's stated line limit (1 MiB in
+// upstream's implementation), with headroom above it -- the default
+// 64KiB bufio.Scanner buffer would otherwise fail on a large query result
+// well within the documented limit.
 const maxLineSize = 2 * 1024 * 1024
 
 // newLineScanner returns a bufio.Scanner sized for maxLineSize.

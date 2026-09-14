@@ -12,9 +12,10 @@ go get github.com/amisonnet8/san-db-ox-clients/go@v0.1.0
 | | |
 | :--- | :--- |
 | `protocol` number | `1` |
-| Tracked upstream tag | see [`.claude/rules/protocol.md`](../.claude/rules/protocol.md) |
 
-External dependencies: none (standard library only).
+Driver version numbers are not tied to the upstream SanDBox version; the
+`protocol` number above is what expresses compatibility. External
+dependencies: none (standard library only).
 
 ## Quickstart
 
@@ -59,19 +60,17 @@ not there to call.
 For direct-connect over SSH/Docker/Kubernetes, socat with TLS client
 authentication, and source-IP restriction, see
 [`docs/usage/connecting_ja.md`](../docs/usage/connecting_ja.md) (Japanese;
-an English version will follow) and
-[`.claude/rules/connectivity.md`](../.claude/rules/connectivity.md).
+an English version will follow once more languages land).
 
 ## Testing
 
 ```
-make fetch    # downloads the san-db-ox binary tests run against
-make go-test
+make fetch    # downloads the san-db-ox binary tests run against into bin/
+make go-test  # unit tests plus an integration suite against that binary
 ```
 
-See [`.claude/rules/testing.md`](../.claude/rules/testing.md) for details
-(hang detection, the conformance suite, `SAN_DB_OX_BIN` for a locally
-built binary).
+Set `SAN_DB_OX_BIN` to point at a locally built `san-db-ox` binary instead
+of downloading one.
 
 ## License
 
