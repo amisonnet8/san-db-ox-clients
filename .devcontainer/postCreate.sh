@@ -11,10 +11,18 @@ sudo apt-get install -y --no-install-recommends \
 #   jq      -- inspecting/crafting stdio protocol JSON Lines by hand
 #   socat   -- exercising the socket transport (.claude/rules/architecture.md,
 #              .claude/rules/connectivity.md) against a real san-db-ox process
-#   ssh (openssh-client) -- exercising the direct-connect-over-SSH path
-#              (.claude/rules/connectivity.md) locally
+#   openssh-client/openssh-server -- exercising the direct-connect-over-SSH
+#              path (.claude/rules/connectivity.md) locally, both as the
+#              client (`ssh user@host san-db-ox --serve-stdio`) and as the
+#              server, to actually run an authorized_keys forced-command
+#              entry against a local sshd rather than only reading the
+#              syntax off documentation (.claude/rules/testing.md: "検証
+#              できない例ほど、書いた時点で手元で一度実行して確かめる
+#              こと"). sshd is not started here -- it's brought up by hand
+#              only when that verification is being done.
 #   ShellCheck -- backs `make shellcheck`
-sudo apt-get install -y --no-install-recommends jq socat openssh-client shellcheck
+sudo apt-get install -y --no-install-recommends \
+  jq socat openssh-client openssh-server shellcheck
 
 # ShellCheck note: do not start a comment line with a lowercase "# shellcheck"
 # anywhere in this repo's scripts -- ShellCheck itself tries to parse it as an
