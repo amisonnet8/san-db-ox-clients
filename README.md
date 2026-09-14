@@ -17,12 +17,12 @@ transport.
 | | |
 | :--- | :--- |
 | Upstream repository | [amisonnet8/san-db-ox](https://github.com/amisonnet8/san-db-ox) |
-| Tracked tag | `v0.1.0` |
 | `protocol` number | `1` |
 
 Driver version numbers are not tied to the upstream version; the
 `protocol` number above is what expresses compatibility. See
-[`.claude/rules/protocol.md`](.claude/rules/protocol.md) for details.
+[`.claude/rules/protocol.md`](.claude/rules/protocol.md) for the tracked
+upstream tag and details.
 
 ## Language status
 

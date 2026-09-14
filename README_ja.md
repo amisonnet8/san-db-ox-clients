@@ -16,11 +16,10 @@ stdio プロトコルは行区切りJSON（JSON Lines）であり、サブプロ
 | 項目 | 値 |
 | :--- | :--- |
 | 本体リポジトリ | [amisonnet8/san-db-ox](https://github.com/amisonnet8/san-db-ox) |
-| 追従しているタグ | `v0.1.0` |
 | `protocol` 番号 | `1` |
 
 ドライバのバージョンと本体のバージョンは連動しない。対応関係はこの
-`protocol` 番号で表す。詳細は
+`protocol` 番号で表す。追従している本体のタグを含む詳細は
 [`.claude/rules/protocol.md`](.claude/rules/protocol.md) を参照。
 
 ## 言語別の状況
