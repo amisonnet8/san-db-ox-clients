@@ -107,14 +107,16 @@ func StartDirect(ctx context.Context, name string, args []string, opts ...Option
 	return d, nil
 }
 
-// Reader returns the child's stdout.
-func (d *Direct) Reader() io.Reader { return d.stdout }
+// Read reads from the child's stdout.
+func (d *Direct) Read(p []byte) (int, error) { return d.stdout.Read(p) }
 
-// Writer returns the child's stdin. Each Write is expected to be a
+// Write writes to the child's stdin. Each call is expected to be a
 // complete, already-newline-terminated request line -- see codec.
 // WriteRequest, which writes exactly that in one call so no separate flush
 // step is needed.
-func (d *Direct) Writer() io.Writer { return d.stdin }
+func (d *Direct) Write(p []byte) (int, error) { return d.stdin.Write(p) }
+
+var _ Conn = (*Direct)(nil)
 
 // Close performs the staged shutdown .claude/rules/testing.md calls for:
 // close stdin, wait, and if the process is still alive after timeout,

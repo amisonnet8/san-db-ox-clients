@@ -7,10 +7,8 @@
 1. **①リポジトリ骨格**: 完了。
 2. **②conformance の確立**: 完了。
 3. **③Go ドライバ: コーデック層＋直結トランスポート**: 完了。
-4. **④Go ドライバ: ソケットトランスポート（オプション層）【現在地】**: socat 等で
-   外付けされた TCP/UNIX ドメインソケットへの接続。`overwrite` 等、
-   直結でしか成立しない API を型で分離する。
-5. **⑤ドキュメント・配布**: `go/vX.Y.Z` タグでのリリース運用、README
+4. **④Go ドライバ: ソケットトランスポート（オプション層）**: 完了。
+5. **⑤ドキュメント・配布【現在地】**: `go/vX.Y.Z` タグでのリリース運用、README
    本文の執筆、`docs/usage/connecting_ja.md`（`.claude/rules/connectivity.md`
    の実例をコマンド付きで肉付けしたもの）。
 6. **⑥以降 他言語への展開**: Python → TypeScript →（需要を見て
@@ -34,7 +32,7 @@ stdio結合、SQL学習サンドボックス）を軸に検討した結果:
 
 ## 現在地
 
-**フェーズ①〜③完了。フェーズ④（ソケットトランスポート）着手前。**
+**フェーズ①〜④完了。フェーズ⑤（ドキュメント・配布）着手前。**
 
 ### フェーズ①・②の要約
 
@@ -127,7 +125,78 @@ stdio結合、SQL学習サンドボックス）を軸に検討した結果:
 **`CLAUDE.md` の定めどおり `PostToolUse` フックを提案し、承認を得て
 導入済み**（詳細は下記「保留事項」参照）。
 
-**次はフェーズ④（Go ドライバ: ソケットトランスポート）。**
+### フェーズ④（Go ドライバ: ソケットトランスポート＋直結専用APIの型分離）で行ったこと
+
+`.claude/rules/architecture.md` が要求する2点——ソケットトランスポートの
+追加と、直結でしか成立しない API（`overwrite`・終了コード）の型による
+分離——を実装した。
+
+- **`internal/transport/conn.go`（新設）**: `Conn`
+  インターフェース（`io.Reader`＋`io.Writer`＋`Close(timeout)`）。
+  `Direct`（`Reader()`/`Writer()` メソッドを廃止し、`Read`/`Write` を
+  自身に直接実装する形へ変更）と、新設の `Socket` の両方がこれを満たす。
+- **`internal/transport/socket.go`（新設）**: `Socket`（`net.Conn` の
+  ラッパー）。`DialSocket(ctx, network, address)`（`net.Dial` と同じ
+  語彙の `"tcp"`/`"unix"`）に加え、呼び出し元が用意した `net.Conn`
+  （`crypto/tls.Dial` の戻り値等）をそのまま包める `NewSocket(nc)` を
+  用意——TLS 専用のコンストラクタを増やさずに mTLS
+  （`connectivity.md`）に対応できる。`Close(timeout)` に段階的
+  エスカレーションは無い（`Direct` と非対称——ここには回収すべき
+  子プロセスも、読むべき stderr も無いことをコメントで明記）。
+- **`sandbox` パッケージの再構成**: `Client` が抱えていた
+  hello検証・読み取りループ・`call`の直列化・op別メソッドを、非公開の
+  `session` 型（`transport.Conn` を保持）へ移動。公開インターフェース
+  `sandbox.Conn`（`Query`/`Exec`/`Snapshot`/`Load`/`Inspect`/`Tables`/
+  `Schema`/`Dump`/`Close`）を新設し、`*Client`・`*SocketClient` が
+  `*session` を埋め込むことでこれを満たす。**`Overwrite`・`ExitCode` は
+  `Conn` に含めず `Client` にのみ実装**——`SocketClient` からは
+  コンパイル時に呼べない（`architecture.md` の「呼び出せるが実行時に
+  失敗する形にしない」への対応）。
+- **`sandbox/socket.go`（新設）**: `OpenSocket(ctx, network, address)`・
+  `OpenSocketConn(ctx, nc)`。ドキュメントコメントに `connectivity.md`・
+  本体仕様書 §8 の前提（接続ごとに別プロセス・別DB、認証が無い、
+  `--read-only`＋TLS クライアント認証を外部公開の前提とする）をそのまま
+  記載。
+- **テスト**:
+  - `internal/transport/socket_test.go`: TCP・UNIX ソケットへの
+    `DialSocket`、`NewSocket` で包んだ `net.Pipe`、`Close` が
+    ブロック中の `Read` を解除すること。
+  - `sandbox/socket_test.go`:
+    - `TestSocketClientOverBridge` — Go 製の最小ブリッジ（`net.Listen`
+      → 接続ごとに `transport.StartDirect` → `io.Copy` で双方向に
+      橋渡し。socat 相当の役割を外部ツール無しで CI 内に持ち込む）。
+      TCP・UNIX 両方で hello・`Exec`/`Query` の往復・`Close` を確認。
+    - `TestSocketClientViaSocat` — 実機の `socat
+      UNIX-LISTEN:…,fork EXEC:"…--serve-stdio"` に対する接続確認。
+      `socat` が `PATH` に無ければ `t.Skip`（devcontainer には
+      `postCreate.sh` で導入済みなので通常は実行される）。
+    - `TestSocketClientOmitsDirectOnlyAPIs` — `*SocketClient` が
+      `Overwrite`/`ExitCode` を実装しないことを型アサーションで検証
+      （実装が誤って昇格させた場合に検知するガード）。
+  - 既存の `sandbox_test.go`（`*Client` 経由）・
+    `conformance_test.go`（`internal/transport`/`internal/codec` 直接
+    利用）は無変更で green のまま——リファクタが振る舞いを変えていない
+    ことの裏付け。
+- **`go doc ./sandbox Client` と `SocketClient` を比較し**、
+  `Overwrite`/`ExitCode` が `Client` 側にしか現れないことを確認した。
+- **手動疎通確認**: `socat UNIX-LISTEN:…,fork EXEC:"bin/san-db-ox
+  --read-only --serve-stdio"` に対して、ドライバを介さない素の `socat`
+  一行でも hello 行（`protocol:1`）が読めることを確認——CLAUDE.md の
+  「ドライバは前提条件ではない」がソケット経路でも成り立つことの実地
+  確認。
+- **副次的な修正**: `README.md`/`README_ja.md` の「追従しているタグ」
+  行が `v0.1.0` のまま `protocol.md`（`v0.1.1`）と食い違っていたのを
+  発見し削除。`distribution.md` が README に明記させたいのは
+  `protocol` 番号でありタグそのものではないため、タグは
+  `protocol.md` への参照に一本化した（`testing.md` のタグ二重管理を
+  削除したフェーズ②と同じ判断）。
+
+`Makefile`・CI（`.github/workflows/test.yml`）は無変更——`go-test` が
+新規テストをそのまま拾い、`go-netcheck` は引き続き codec 層のみを
+検査する（transport 層が `net` に依存するのは `architecture.md` が
+想定している姿そのもの）。
+
+**次はフェーズ⑤（ドキュメント・配布）。**
 
 ## GitHub リポジトリ設定（決定事項、リポジトリ作成時に設定）
 

@@ -32,10 +32,10 @@ func TestStartDirectEchoesStdinToStdout(t *testing.T) {
 	}
 	defer d.Close(2 * time.Second)
 
-	if _, err := d.Writer().Write([]byte("hello\n")); err != nil {
+	if _, err := d.Write([]byte("hello\n")); err != nil {
 		t.Fatalf("Write: %v", err)
 	}
-	r := bufio.NewReader(d.Reader())
+	r := bufio.NewReader(d)
 	line, err := r.ReadString('\n')
 	if err != nil {
 		t.Fatalf("ReadString: %v", err)
@@ -63,10 +63,10 @@ func TestStartDirectDrainsStderrWithoutBlocking(t *testing.T) {
 	}
 	defer d.Close(2 * time.Second)
 
-	if _, err := d.Writer().Write([]byte("still alive\n")); err != nil {
+	if _, err := d.Write([]byte("still alive\n")); err != nil {
 		t.Fatalf("Write: %v", err)
 	}
-	r := bufio.NewReader(d.Reader())
+	r := bufio.NewReader(d)
 	line, err := r.ReadString('\n')
 	if err != nil {
 		t.Fatalf("ReadString (likely means stderr blocked the child): %v", err)

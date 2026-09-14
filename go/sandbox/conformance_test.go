@@ -100,7 +100,7 @@ func runConformanceCase(t *testing.T, bin string, kase conformanceCase) {
 	}
 	defer d.Close(5 * time.Second)
 
-	sc := newConformanceScanner(d.Reader())
+	sc := newConformanceScanner(d)
 	if _, err := scan(ctx, sc, d); err != nil {
 		t.Fatalf("reading hello line: %v", err)
 	}
@@ -119,7 +119,7 @@ func runConformanceCase(t *testing.T, bin string, kase conformanceCase) {
 			}
 
 			line := append(append([]byte(nil), step.Request...), '\n')
-			if _, err := d.Writer().Write(line); err != nil {
+			if _, err := d.Write(line); err != nil {
 				t.Fatalf("writing request %s: %v", step.Request, err)
 			}
 			raw, err := scan(ctx, sc, d)
