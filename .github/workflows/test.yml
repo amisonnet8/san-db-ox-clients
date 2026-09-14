@@ -29,6 +29,16 @@ jobs:
           exit-code: 1
           skip-dirs: bin
 
+  # docs/usage/*.md の <!-- doctest --> 付きの例だけを実行する
+  # (.claude/rules/testing.md)。Go ツールチェーンには依存させない
+  # (.claude/rules/directory-structure.md「言語ディレクトリ同士は互いに
+  # 依存しない」の精神をドキュメント検証にも適用)。
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: make test-docs
+
   # ubuntu-latest 限定（現時点）: fetch-san-db-ox.sh は darwin/windows 向け
   # アセットにも対応済みだが、マトリクス化は他言語が揃うフェーズ⑤以降で
   # まとめて検討する（.claude/rules/directory-structure.md の「言語ディレクト

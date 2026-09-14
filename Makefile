@@ -1,4 +1,4 @@
-.PHONY: shellcheck trivy fetch go-build go-vet go-test go-netcheck
+.PHONY: shellcheck trivy fetch go-build go-vet go-test go-netcheck test-docs
 
 # ShellCheck every tracked shell script. git ls-files enumerates them so a
 # new script needs no Makefile change (mirrors san-db-ox's own `make
@@ -24,6 +24,15 @@ trivy:
 # built binary instead (.claude/rules/testing.md).
 fetch:
 	@scripts/fetch-san-db-ox.sh
+
+# Opt-in verification for docs/usage/*.md's copy-pasteable command examples
+# (.claude/rules/testing.md: "接続方法のドキュメントは実測できるものだけを
+# 検証対象にする"). Only extracts and runs bash blocks marked with a
+# preceding "<!-- doctest -->" comment -- unmarked examples (SSH, socat,
+# TLS, Docker) are deliberately left to manual, one-time verification when
+# they're written, same line upstream's own tests/docs.sh draws.
+test-docs: fetch
+	@scripts/test-docs.sh
 
 # Go targets are prefixed go- (.claude/rules/directory-structure.md: language
 # directories don't depend on each other, and Python/TypeScript will get
