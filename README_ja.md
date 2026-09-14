@@ -26,7 +26,7 @@ stdio プロトコルは行区切りJSON（JSON Lines）であり、サブプロ
 
 | 言語 | 状態 |
 | :--- | :--- |
-| Go | 準備中 |
+| Go | 利用可能——[`go/`](go/) を参照 |
 | Python | 予定 |
 | TypeScript | 予定 |
 
@@ -38,7 +38,8 @@ socat 等で外付けされたソケットへの接続の2種類をサポート�
 無い経路を外部公開する際のセキュリティ設定（SSH forced command・TLS
 クライアント認証等）を含め、詳細は
 [`.claude/rules/connectivity.md`](.claude/rules/connectivity.md) を
-参照（実例集は今後 `docs/usage/connecting_ja.md` に追加予定）。
+参照。上記すべてのパターンについて、実際にコピーして使えるコマンド例を
+[`docs/usage/connecting_ja.md`](docs/usage/connecting_ja.md) に用意した。
 
 ## ライセンス
 

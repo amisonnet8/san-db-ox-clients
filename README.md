@@ -28,7 +28,7 @@ upstream tag and details.
 
 | Language | Status |
 | :--- | :--- |
-| Go | in progress |
+| Go | available — see [`go/`](go/) |
 | Python | planned |
 | TypeScript | planned |
 
@@ -40,8 +40,11 @@ Kubernetes just by swapping the launch command) and a socket transport
 for connecting to an endpoint exposed via socat or similar. For
 security configuration when exposing an unauthenticated endpoint
 externally (SSH forced commands, TLS client auth, etc.), see
-[`.claude/rules/connectivity.md`](.claude/rules/connectivity.md) (a
-worked-example doc will follow at `docs/usage/connecting.md`).
+[`.claude/rules/connectivity.md`](.claude/rules/connectivity.md).
+Copy-pasteable command examples for every pattern above are in
+[`docs/usage/connecting_ja.md`](docs/usage/connecting_ja.md) (Japanese
+for now; an English version follows once more languages land, per this
+repo's documentation policy).
 
 ## License
 
