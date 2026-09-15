@@ -58,6 +58,12 @@ Rust ドライバの `connect` も同様。
 let mut c = san_db_ox_client::connect("bin/san-db-ox", &["--serve-stdio"])?;
 ```
 
+Java ドライバの `SanDbOx.connect` も同様。
+
+```java
+SanDbOxClient c = SanDbOx.connect("bin/san-db-ox", List.of("--serve-stdio"));
+```
+
 ### SSH リモートコマンド直結
 
 サーバ側に手を加えず、単に `ssh` 経由で `san-db-ox --serve-stdio` を
@@ -94,6 +100,12 @@ Rust ドライバも同様。
 
 ```rust
 let mut c = san_db_ox_client::connect("ssh", &["user@host", "san-db-ox", "--serve-stdio"])?;
+```
+
+Java ドライバも同様。
+
+```java
+SanDbOxClient c = SanDbOx.connect("ssh", List.of("user@host", "san-db-ox", "--serve-stdio"));
 ```
 
 ### SSH forced command（推奨経路）
@@ -147,6 +159,11 @@ devcontainer に導入済み。テストのたびに `sudo /usr/sbin/sshd -p <po
   `query` の往復が正しく返ることと、forced command の `--read-only` が
   実際に効いていること（`snapshot()` が `read_only` コードで拒否
   される）を確認した。
+- Java ドライバの `SanDbOx.connect("ssh", ...)` についても、hello 行・
+  `query` の往復が正しく返ること、クライアントが任意のコマンドを送っても
+  forced command だけが実行されること、forced command の `--read-only`
+  が実際に効いていること（`snapshot()` が `read_only` コードの
+  `ResponseException` を投げる）を確認した。
 
 **読み書き両方を許す鍵と読み取り専用の鍵は、`authorized_keys` の別エントリ
 （別の鍵ペア）として分けて発行すること。** 1つの鍵に両方の権限を持たせて
@@ -174,6 +191,10 @@ const c = await connect("docker", ["run", "-i", "--rm", image, "--serve-stdio"])
 let mut c = san_db_ox_client::connect("docker", &["run", "-i", "--rm", image, "--serve-stdio"])?;
 ```
 
+```java
+SanDbOxClient c = SanDbOx.connect("docker", List.of("run", "-i", "--rm", image, "--serve-stdio"));
+```
+
 ### Kubernetes
 
 ```bash
@@ -196,6 +217,10 @@ const c = await connect("kubectl", ["exec", "-i", pod, "--", "san-db-ox", "--ser
 let mut c = san_db_ox_client::connect("kubectl", &["exec", "-i", pod, "--", "san-db-ox", "--serve-stdio"])?;
 ```
 
+```java
+SanDbOxClient c = SanDbOx.connect("kubectl", List.of("exec", "-i", pod, "--", "san-db-ox", "--serve-stdio"));
+```
+
 ## socat 経由（ソケット）
 
 socat を挟むと、直結では出せない TCP/UNIX ソケットとしてクライアントに
@@ -211,7 +236,7 @@ socat を挟むと、直結では出せない TCP/UNIX ソケットとしてク�
 **自身の実行ファイルを上書きする `overwrite` op は socat 経由では
 使わない。** 複数の子プロセスが同じ実行ファイルパスへ同時に書きに行く
 リスクがあるため（Go ドライバでは、そもそも `*SocketClient` に
-`Overwrite` メソッド自体が無く、型の時点で呼べない。Rust ドライバの
+`Overwrite` メソッド自体が無く、型の時点で呼べない。Rust・Java 両ドライバの
 `SocketClient` にも `overwrite` メソッドは無く、同じ理由でコンパイル
 エラーになる）。
 
@@ -247,6 +272,12 @@ const c2 = await connectTcp("127.0.0.1", 5432);
 let mut c = san_db_ox_client::connect_unix("/tmp/sandbox.sock")?;
 // または
 let mut c2 = san_db_ox_client::connect_tcp(("127.0.0.1", 5432))?;
+```
+
+```java
+SocketClient c = SanDbOx.connectUnix(Path.of("/tmp/sandbox.sock"));
+// または
+SocketClient c2 = SanDbOx.connectTcp("127.0.0.1", 5432);
 ```
 
 ### TLS/mTLS（クライアント証明書による認証）
@@ -399,6 +430,65 @@ failed` でサーバ側から拒否されることを確認した。加えて、
 を実際に束縛することも確認した——これは Rust に固有の主張であるため、
 仮定せず実測した（`TcpStream` に 200ms を設定し、わざと遅いクエリに対して
 約255msで `Error::Timeout` が返ることを確認）。
+
+Java の `javax.net.ssl.SSLSocket` は `java.net.Socket` のサブクラスなので、
+`connectSocket` がそのまま受け取れる——ここでも TLS ライブラリへの依存は
+無い。ただし他の4言語と違い、Java は PEM 証明書を直接読めないため、
+クライアント証明書と CA を先に PKCS#12 キーストアへ変換する一手間が要る。
+
+```bash
+openssl pkcs12 -export -in client-cert.pem -inkey client-key.pem \
+  -certfile ca.pem -out client.p12 -passout pass:changeit
+keytool -importcert -noprompt -alias ca -file ca.pem \
+  -keystore truststore.p12 -storetype PKCS12 -storepass changeit
+```
+
+```java
+KeyStore keyStore = KeyStore.getInstance("PKCS12");
+try (var in = Files.newInputStream(Path.of("client.p12"))) {
+    keyStore.load(in, "changeit".toCharArray());
+}
+KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+kmf.init(keyStore, "changeit".toCharArray());
+
+KeyStore trustStore = KeyStore.getInstance("PKCS12");
+try (var in = Files.newInputStream(Path.of("truststore.p12"))) {
+    trustStore.load(in, "changeit".toCharArray());
+}
+TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+tmf.init(trustStore);
+
+SSLContext ctx = SSLContext.getInstance("TLS");
+ctx.init(kmf.getKeyManagers(), tmf.getTrustManagers(), null);
+
+SSLSocket socket = (SSLSocket) ctx.getSocketFactory().createSocket("host", 5432);
+socket.startHandshake();
+
+SocketClient c = SanDbOx.connectSocket(socket, new SocketOptions());
+```
+
+この組み合わせ（`SSLSocket` → `connectSocket`）も同じ socat 待受に対して
+実際に動かし、hello 行・`query` の往復と、`SocketOptions`/`setTimeout`
+で設定したドライバ側のタイムアウトが TLS 越しの読み取りを実際に束縛する
+こと（同じわざと遅いクエリに対し200msのタイムアウトを設定し、約202msで
+`ReadTimeoutException` が返ることを確認）を確認した。Rust では呼び出し側
+が TLS でラップする前のストリームに自分で read timeout を設定する必要が
+あった（ドライバ側からは手が届かないため）のに対し、Java の
+`connectSocket` は呼び出しのたびに `Socket.setSoTimeout` をソケットへ
+直接呼べる（既存の設定は上書きされる）——`SSLSocket extends Socket`
+であるおかげで、Rust 側のドキュメントが指摘していた穴がここには無い。
+
+CA チェーン外のクライアント証明書が拒否されることも確認したが、TLS 1.3
+特有の癖が1つあった。**`SSLSocket.startHandshake()` が例外を投げずに
+完了しても、それだけではサーバがその証明書を受理した証拠にはならない。**
+TLS 1.3 ではクライアント側が自分のハンドシェイクを完了したと見なす
+タイミングが、サーバ側の非同期な拒否アラートを処理するより早く来うる
+ため、socat がまさに接続を閉じようとしている最中でも
+`startHandshake()` が正常に返ることがある。拒否は1テンポ遅れて、
+最初の実際の読み取り時に確実に現れる——これはまさに `connectSocket` 自身
+が最初に行う hello 行の読み取りが担っている検証そのものであり、TLS の
+アラート（`Received fatal alert: unknown_ca`）を包んだ
+`SanDbOxException` が投げられることを、繰り返し実行して一貫して確認した。
 
 ### 接続元IP アドレスの制限
 

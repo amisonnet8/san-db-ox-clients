@@ -31,6 +31,7 @@ stdio プロトコルは行区切りJSON（JSON Lines）であり、サブプロ
 | Python | 利用可能——[`python/`](python/) を参照 |
 | TypeScript | 利用可能——[`typescript/`](typescript/) を参照 |
 | Rust | 利用可能——[`rust/`](rust/) を参照 |
+| Java | 利用可能——[`java/`](java/) を参照 |
 
 ## 接続方法
 

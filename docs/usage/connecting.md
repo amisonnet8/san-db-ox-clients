@@ -60,6 +60,12 @@ The Rust driver's `connect` does the same:
 let mut c = san_db_ox_client::connect("bin/san-db-ox", &["--serve-stdio"])?;
 ```
 
+The Java driver's `SanDbOx.connect` does the same:
+
+```java
+SanDbOxClient c = SanDbOx.connect("bin/san-db-ox", List.of("--serve-stdio"));
+```
+
 ### SSH remote command
 
 Without touching the server side at all, just launching
@@ -97,6 +103,12 @@ Same for the Rust driver:
 
 ```rust
 let mut c = san_db_ox_client::connect("ssh", &["user@host", "san-db-ox", "--serve-stdio"])?;
+```
+
+Same for the Java driver:
+
+```java
+SanDbOxClient c = SanDbOx.connect("ssh", List.of("user@host", "san-db-ox", "--serve-stdio"));
 ```
 
 ### SSH forced command (the recommended route)
@@ -152,6 +164,11 @@ installed in the devcontainer; it's brought up by hand with
   hello line and a `query` round-trip both come back correctly, and the
   forced `--read-only` is enforced (`snapshot()` rejects with the
   `read_only` code).
+- Confirmed the same for the Java driver's `SanDbOx.connect("ssh", ...)`:
+  the hello line and a `query` round-trip both come back correctly, a
+  client sending an arbitrary command still only ever gets the forced
+  command, and the forced `--read-only` is enforced (`snapshot()` throws a
+  `ResponseException` with the `read_only` code).
 
 **Issue a separate `authorized_keys` entry (a separate key pair) for a
 read-write key versus a read-only key.** Don't give one key both
@@ -179,6 +196,10 @@ const c = await connect("docker", ["run", "-i", "--rm", image, "--serve-stdio"])
 let mut c = san_db_ox_client::connect("docker", &["run", "-i", "--rm", image, "--serve-stdio"])?;
 ```
 
+```java
+SanDbOxClient c = SanDbOx.connect("docker", List.of("run", "-i", "--rm", image, "--serve-stdio"));
+```
+
 ### Kubernetes
 
 ```bash
@@ -201,6 +222,10 @@ const c = await connect("kubectl", ["exec", "-i", pod, "--", "san-db-ox", "--ser
 let mut c = san_db_ox_client::connect("kubectl", &["exec", "-i", pod, "--", "san-db-ox", "--serve-stdio"])?;
 ```
 
+```java
+SanDbOxClient c = SanDbOx.connect("kubectl", List.of("exec", "-i", pod, "--", "san-db-ox", "--serve-stdio"));
+```
+
 ## Over socat (socket)
 
 Putting socat in front exposes SanDBox as a TCP/UNIX socket, something
@@ -219,9 +244,9 @@ direct-connect doesn't have.
 executable) over socat.** Multiple child processes could end up writing
 the same executable path at once. (In the Go driver, `*SocketClient`
 simply has no `Overwrite` method -- it can't be called, by the type
-system. The Rust driver's `SocketClient` has no `overwrite` method
-either, for the same reason -- calling it is a compile error, not a
-runtime one.)
+system. The Rust and Java drivers' `SocketClient` types have no
+`overwrite` method either, for the same reason -- calling it is a compile
+error, not a runtime one.)
 
 ### Plain TCP/UNIX socket
 
@@ -255,6 +280,12 @@ const c2 = await connectTcp("127.0.0.1", 5432);
 let mut c = san_db_ox_client::connect_unix("/tmp/sandbox.sock")?;
 // or
 let mut c2 = san_db_ox_client::connect_tcp(("127.0.0.1", 5432))?;
+```
+
+```java
+SocketClient c = SanDbOx.connectUnix(Path.of("/tmp/sandbox.sock"));
+// or
+SocketClient c2 = SanDbOx.connectTcp("127.0.0.1", 5432);
 ```
 
 ### TLS/mTLS (client-certificate authentication)
@@ -414,6 +445,67 @@ pre-TLS `TcpStream` actually bounds the driver's reads through the TLS
 wrapper -- the one claim above that's specific to Rust, so it was measured
 (a 200ms `TcpStream` timeout against a deliberately slow query returned
 `Error::Timeout` in ~255ms) rather than assumed.
+
+Java's `javax.net.ssl.SSLSocket` is a `java.net.Socket` subclass, so
+`connectSocket` takes it directly -- no TLS crate/library dependency here
+either. Unlike the other four drivers, Java can't load a PEM certificate
+directly, so the client certificate and CA need converting to PKCS#12
+keystores first:
+
+```bash
+openssl pkcs12 -export -in client-cert.pem -inkey client-key.pem \
+  -certfile ca.pem -out client.p12 -passout pass:changeit
+keytool -importcert -noprompt -alias ca -file ca.pem \
+  -keystore truststore.p12 -storetype PKCS12 -storepass changeit
+```
+
+```java
+KeyStore keyStore = KeyStore.getInstance("PKCS12");
+try (var in = Files.newInputStream(Path.of("client.p12"))) {
+    keyStore.load(in, "changeit".toCharArray());
+}
+KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+kmf.init(keyStore, "changeit".toCharArray());
+
+KeyStore trustStore = KeyStore.getInstance("PKCS12");
+try (var in = Files.newInputStream(Path.of("truststore.p12"))) {
+    trustStore.load(in, "changeit".toCharArray());
+}
+TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+tmf.init(trustStore);
+
+SSLContext ctx = SSLContext.getInstance("TLS");
+ctx.init(kmf.getKeyManagers(), tmf.getTrustManagers(), null);
+
+SSLSocket socket = (SSLSocket) ctx.getSocketFactory().createSocket("host", 5432);
+socket.startHandshake();
+
+SocketClient c = SanDbOx.connectSocket(socket, new SocketOptions());
+```
+
+This combination (`SSLSocket` → `connectSocket`) was also run against the
+same socat listener, confirming the hello line and a `query` round-trip,
+and confirming a driver-level timeout set via `SocketOptions`/`setTimeout`
+actually bounds a read through the TLS wrapper (a 200ms timeout against
+the same deliberately slow query returned `ReadTimeoutException` in
+~202ms). Unlike Rust, where the caller has to set the read timeout on the
+pre-TLS stream itself because the driver cannot reach it, Java's
+`connectSocket` calls `Socket.setSoTimeout` on the socket directly as
+calls are made (overwriting anything set beforehand) -- `SSLSocket
+extends Socket` closes the one gap Rust's own doc note above calls out,
+so this driver has no equivalent caveat.
+
+A client certificate outside the CA chain was also confirmed rejected,
+with one TLS 1.3-specific wrinkle worth knowing: `SSLSocket.startHandshake()`
+completing without an exception is **not** by itself proof the server
+accepted the certificate. TLS 1.3 lets a client consider its own handshake
+finished before it has processed the server's asynchronous rejection
+alert, so `startHandshake()` can return normally even when socat is about
+to close the connection. The rejection reliably surfaces one step later,
+at the first actual read -- which is exactly what `connectSocket`'s own
+hello-line read (the first thing it does) provides: it throws a
+`SanDbOxException` wrapping the TLS alert (`Received fatal alert:
+unknown_ca`), confirmed consistently across repeated runs.
 
 ### Restricting source IP addresses
 

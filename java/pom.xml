@@ -1,0 +1,208 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>io.github.amisonnet8</groupId>
+  <artifactId>san-db-ox-client</artifactId>
+  <version>0.1.0</version>
+  <packaging>jar</packaging>
+
+  <name>san-db-ox-client</name>
+  <description>Client for SanDBox: connect over its stdio protocol from Java.</description>
+  <url>https://github.com/amisonnet8/san-db-ox-clients</url>
+
+  <licenses>
+    <license>
+      <name>MIT License</name>
+      <url>https://opensource.org/licenses/MIT</url>
+    </license>
+  </licenses>
+
+  <developers>
+    <developer>
+      <id>amisonnet8</id>
+      <name>amisonnet8</name>
+      <url>https://github.com/amisonnet8</url>
+    </developer>
+  </developers>
+
+  <scm>
+    <connection>scm:git:https://github.com/amisonnet8/san-db-ox-clients.git</connection>
+    <developerConnection>scm:git:https://github.com/amisonnet8/san-db-ox-clients.git</developerConnection>
+    <url>https://github.com/amisonnet8/san-db-ox-clients</url>
+    <tag>HEAD</tag>
+  </scm>
+
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <maven.compiler.release>17</maven.compiler.release>
+    <junit.version>5.11.3</junit.version>
+  </properties>
+
+  <!--
+    Runtime dependencies: none. The JSON codec is hand-written
+    (src/main/java/.../codec/) to keep this property, matching the
+    Go/Python/TypeScript/Rust drivers in this repository. JUnit 5 is a
+    test-scope dependency only: it does not transit to consumers of
+    this library.
+  -->
+  <dependencies>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>${junit.version}</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <finalName>san-db-ox-client-${project.version}</finalName>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.13.0</version>
+        <configuration>
+          <!--
+            -Xlint:all -Werror is this driver's equivalent of Go's `go vet`
+            and Rust's `clippy -D warnings`: a static check that ships with
+            the standard toolchain, not a third-party plugin (Checkstyle,
+            SpotBugs, and Error Prone are deliberately not used, per this
+            repository's policy of sticking to standard tools).
+          -->
+          <compilerArgs>
+            <arg>-Xlint:all</arg>
+            <arg>-Werror</arg>
+          </compilerArgs>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.5.2</version>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>3.4.2</version>
+        <configuration>
+          <archive>
+            <!--
+              addDefaultImplementationEntries populates Implementation-Version
+              from ${project.version}, which SanDbOx.VERSION reads at
+              runtime via Package#getImplementationVersion(); only
+              present once packaged into a jar, so that constant falls
+              back to a placeholder under `mvn test` (see its javadoc).
+            -->
+            <manifest>
+              <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
+            </manifest>
+            <manifestEntries>
+              <!--
+                Gives module-path consumers a stable name without a
+                module-info.java descriptor, which would force this
+                package's own tests (same package, for white-box access)
+                into JPMS patch-module territory.
+              -->
+              <Automatic-Module-Name>io.github.amisonnet8.sandbox</Automatic-Module-Name>
+            </manifestEntries>
+          </archive>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-javadoc-plugin</artifactId>
+        <version>3.11.1</version>
+        <configuration>
+          <!--
+            -Xdoclint:all,-missing catches a genuinely broken doc comment
+            (malformed HTML, an unresolvable {@link}, invalid tag usage),
+            this driver's equivalent of `cargo doc` catching one. The
+            "-missing" part turns off nagging for every method lacking a
+            full @param/@return/@throws tag set, since this driver
+            documents in prose (matching the Go/Rust drivers here) rather
+            than exhaustive per-tag coverage. Also relevant because
+            javadoc gets published like docs.rs: it must not reference
+            .claude/ (naming.md's "読者を2つに分ける").
+          -->
+          <additionalJOption>-Xdoclint:all,-missing</additionalJOption>
+          <source>17</source>
+          <failOnWarnings>true</failOnWarnings>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+
+  <!--
+    Only activated for `mvn -Prelease ...`: a plain `mvn test` needs
+    neither a GPG key nor network access to Central. Pre-provisioned now
+    so phase (3) publish is a single `mvn -Prelease deploy` once the
+    Central Portal account, io.github.amisonnet8 namespace, and GPG key
+    exist (all user steps, PLAN.md).
+  -->
+  <profiles>
+    <profile>
+      <id>release</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-source-plugin</artifactId>
+            <version>3.3.1</version>
+            <executions>
+              <execution>
+                <id>attach-sources</id>
+                <goals>
+                  <goal>jar-no-fork</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-javadoc-plugin</artifactId>
+            <version>3.11.1</version>
+            <configuration>
+              <additionalJOption>-Xdoclint:all,-missing</additionalJOption>
+              <source>17</source>
+              <failOnWarnings>true</failOnWarnings>
+            </configuration>
+            <executions>
+              <execution>
+                <id>attach-javadocs</id>
+                <goals>
+                  <goal>jar</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-gpg-plugin</artifactId>
+            <version>3.2.7</version>
+            <executions>
+              <execution>
+                <id>sign-artifacts</id>
+                <phase>verify</phase>
+                <goals>
+                  <goal>sign</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.sonatype.central</groupId>
+            <artifactId>central-publishing-maven-plugin</artifactId>
+            <version>0.7.0</version>
+            <extensions>true</extensions>
+            <configuration>
+              <publishingServerId>central</publishingServerId>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
+</project>

@@ -23,6 +23,18 @@
     // neither.
     "ghcr.io/devcontainers/features/rust:1": {
       "profile": "default"
+    },
+    // Java driver requires 17 (bookworm's apt openjdk-17-jdk works for the
+    // lower leg, but this feature also brings 25 for the upper leg of the
+    // CI matrix). jdkDistro "tem" (Temurin) matches distribution: temurin
+    // in .github/workflows/test.yml. additionalVersions is a real option
+    // of this feature (verified against its devcontainer-feature.json) --
+    // a comma-separated string, not an array.
+    "ghcr.io/devcontainers/features/java:1": {
+      "version": "17",
+      "additionalVersions": "25",
+      "jdkDistro": "tem",
+      "installMaven": true
     }
   },
   "customizations": {
@@ -35,7 +47,9 @@
         "ms-python.python",
         "charliermarsh.ruff",
         "biomejs.biome",
-        "rust-lang.rust-analyzer"
+        "rust-lang.rust-analyzer",
+        "redhat.java",
+        "vscjava.vscode-maven"
       ],
       "settings": {
         "go.useLanguageServer": true,
@@ -45,6 +59,9 @@
         "rust-analyzer.linkedProjects": ["rust/Cargo.toml"],
         "[rust]": {
           "editor.defaultFormatter": "rust-lang.rust-analyzer"
+        },
+        "[java]": {
+          "editor.defaultFormatter": "redhat.java"
         }
       }
     }

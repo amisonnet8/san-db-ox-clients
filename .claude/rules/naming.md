@@ -41,6 +41,7 @@ op 名は、各言語の命名慣習（camelCase/snake_case 等）へ写像す�
 | Python | `python/`（`pyproject.toml` のルート）、実体は `python/src/san_db_ox/` | 配布名（PyPI）`san-db-ox-client`、import 名 `san_db_ox`（第2段表記。ハイフンは Python の識別子に使えない） | `python/vX.Y.Z` |
 | TypeScript | `typescript/`（`package.json` のルート）、実体は `typescript/src/` | npm パッケージ `@amisonnet8/san-db-ox-client`（スコープ付き。PyPI で `san-db-ox`→`sandbox` の正規化により衝突した問題圏に、スコープを切ることで最初から入らない） | `typescript/vX.Y.Z` |
 | Rust | `rust/`（`Cargo.toml` のルート）、実体は `rust/src/` | crates.io パッケージ `san-db-ox-client`（PyPI の配布名と揃える）、クレート名 `san_db_ox_client`（Cargo 既定のハイフン→アンダースコア変換。`[lib] name` で `san_db_ox` に短縮しない——`cargo add` した利用者が `use` 名を推測できなくなる） | `rust/vX.Y.Z` |
+| Java | `java/`（`pom.xml` のルート）、実体は `java/src/main/java/` | Maven 座標 groupId `io.github.amisonnet8` / artifactId `san-db-ox-client`（第1段表記。PyPI・crates.io と揃える）、Java パッケージ `io.github.amisonnet8.sandbox`（**第3段表記**。理由は下記） | `java/vX.Y.Z` |
 
 **`go/` を直接パッケージにしない。** import パス末尾が `go` になると
 呼び出し側のコードで名前が推測できず、しかも `go` は Go の予約語でもある。
@@ -51,6 +52,15 @@ op 名は、各言語の命名慣習（camelCase/snake_case 等）へ写像す�
 サブディレクトリモジュールの Go のタグ規則にも従う——`go/` 配下のモジュール
 に対するリリースタグは `go/vX.Y.Z` の形式にする（プレフィックス無しの
 `vX.Y.Z` ではモジュールパスと対応が取れない）。詳細は `distribution.md`。
+
+**Java パッケージ名に第3段表記 `sandbox` を使う。** 第2段 `san_db_ox` は
+Java のパッケージ名として文法上は合法だが、「パッケージ名はすべて小文字・
+アンダースコア無し」という Java の支配的な規約（Google Java Style ほか）に
+反し、あらゆる Java 系リンタが警告する。Go の package `sandbox` を許容した
+前例と同じ扱いにする。利用者がタイプする Maven 座標
+（`<artifactId>san-db-ox-client</artifactId>`）側は第1段のままなので、
+Python の「PyPI 名は `san-db-ox-client`／import 名は `san_db_ox`」と同じ
+構造になる。
 
 ## 環境変数
 

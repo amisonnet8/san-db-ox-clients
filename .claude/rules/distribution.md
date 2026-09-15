@@ -11,6 +11,7 @@
 | Python | PyPI | `python/vX.Y.Z`（`naming.md` 参照） |
 | TypeScript | npm | `typescript/vX.Y.Z` |
 | Rust | crates.io | `rust/vX.Y.Z` |
+| Java | Maven Central | `java/vX.Y.Z` |
 
 **統一ランチャーやインストーラは作らない。** 「`san-db-ox-clients` を
 インストールする」という単一の操作は存在せず、利用者は自分が使う言語の

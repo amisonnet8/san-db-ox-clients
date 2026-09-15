@@ -32,6 +32,7 @@ Driver version numbers are not tied to the upstream version; the
 | Python | available — see [`python/`](python/) |
 | TypeScript | available — see [`typescript/`](typescript/) |
 | Rust | available — see [`rust/`](rust/) |
+| Java | available — see [`java/`](java/) |
 
 ## Connecting
 

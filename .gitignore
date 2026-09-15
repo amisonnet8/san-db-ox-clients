@@ -39,5 +39,15 @@ __pycache__/
 /rust/san-db-ox
 /rust/san-db-ox.exe
 
+# Java のビルド成果物（ライブラリのため target/ のみ。実行時依存ゼロ、
+# テストは JUnit 5 のみで Rust の Cargo.lock に相当するロックファイルは
+# 存在しない）
+/java/target/
+
+# 保険: typescript/rust と同じ理由。mvn test の cwd は java/ になるため、
+# テスト側の隔離漏れがあると snapshot/overwrite の出力がここへ落ちうる。
+/java/san-db-ox
+/java/san-db-ox.exe
+
 *.log
 .DS_Store

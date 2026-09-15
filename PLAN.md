@@ -12,8 +12,10 @@
 6. **⑥ Python ドライバ**: 完了。
 7. **⑦ TypeScript ドライバ**: 完了。
 8. **⑧ Rust ドライバ**: 完了。
-9. **⑨以降 他言語への展開【現在地】**: 需要を見て
-   JVM(Java・Kotlin) / Ruby / C#(.NET) / PHP / C から検討する。
+9. **⑨ Java ドライバ【現在地】**: 実装完了。Maven Central への publish は
+   ③配布・公開（ユーザー作業）待ち。
+10. **⑩以降 他言語への展開**: 需要を見て Kotlin / Ruby / C#(.NET) / PHP /
+    C から検討する。
 
 ## 言語の優先順位の根拠
 
@@ -29,12 +31,14 @@ stdio結合、SQL学習サンドボックス）を軸に検討した結果:
 
 この3言語で「CI/CD と結合テスト」という主要ユースケースの大部分をカバー
 できるため、初期スコープとする。4番目以降（Rust/JVM/Ruby/C#/PHP/C）は
-需要を見ながら追加を検討する。Rust はフェーズ⑧としてユーザー指定で
-先に着手した（2026-09-15）。
+需要を見ながら追加を検討する。Rust はフェーズ⑧、Java はフェーズ⑨として、
+いずれもユーザー指定で先に着手した（2026-09-15）。
 
 ## 現在地
 
-**フェーズ①〜⑧完了。フェーズ⑨（5番目の言語）着手前——需要を見て検討する。**
+**フェーズ①〜⑨完了。Go・Python・TypeScript・Rust・Java の5言語すべてが
+実装・テスト・ドキュメント整備済み。フェーズ⑩（6番目の言語）着手前——
+需要を見て検討する。**
 
 ### 公開ページ一覧
 
@@ -729,7 +733,211 @@ crates.io への publish（③配布・公開、ユーザー作業）も完了�
 これでフェーズ⑧（Rustドライバ）が完全に完了し、Go・Python・TypeScript・
 Rust の4言語すべてが実装・公開済みになった。
 
-**次はフェーズ⑨（5番目の言語）——需要を見て検討する。**
+### フェーズ⑨（Java ドライバ）で行ったこと
+
+ユーザー指定で5番目の言語に Java を採用（「次はJava対応に進んでください」、
+2026-09-15）。Java は Rust と同じ「標準ライブラリに JSON が無い」言語
+だが、Rust が苦しんだ残り3つの問題（Base64・SIGTERM・std の TLS 不在）は
+Java では消える——`java.util.Base64` が標準にある、`Process.destroy()` が
+SIGTERM そのもの、`javax.net.ssl.SSLSocket` が `java.net.Socket` の
+subclass として標準にある。フェーズ⑧で書いた JSON コーデックの設計
+（`NumberToken` が原文トークンを保持する方式）を移植し、トランスポート層は
+むしろ簡素になった。
+
+**確定した方針**（ユーザー確定、再検討しない）:
+- 最低 Java 版 17・CI マトリクス `["17","25"]`（既存の「下限＋現行」
+  パターンと同形）。
+- ビルドツールは **Maven**（wrapper 無し、`mvn` は PATH から）。
+- 値の表現は **`Object` ベース**（`null`/`Long`/`Double`/`String`/
+  `byte[]`）。Go の `[]any`、Python/TS の union と同じで4言語中3言語と
+  揃う。
+- **JSON は自前実装、実行時依存ゼロ**（フェーズ⑧の設計を移植）。Base64は
+  `java.util.Base64` を使うが、**パディング欠落を黙って受理する**という
+  標準デコーダの寛容さ（`Base64.getDecoder().decode("QQ")` が成功する）を
+  前置の長さチェックで閉じ、他4言語と同じ厳格さに揃えた
+  （TypeScript の `Buffer.from` で踏んだのと同種の罠）。
+- テスト依存は **JUnit 5 のみ**（`test` スコープ。Rust の「dev-dependencies
+  もゼロ」は Java では達成不能だが、`test` スコープは推移しないので
+  「Runtime dependencies: none」は保たれる）。
+
+**Java 固有に発見した最大の設計課題: Java の可視性には Rust の
+`pub(crate)` に相当する粒度が無い。** package-private はパッケージ単位で
+閉じており、階層に関わらず「1つ上のパッケージへも見える」といった仕組みが
+無い。conformance/match テストは codec の `Json` 木と transport の
+`DirectTransport` の両方に生のアクセスが必要（型付き API では作れない
+不正リクエストを直接送るため）だが、Java ではこの2つを跨いで見せる中間の
+可視性が作れない。**解決策として `io.github.amisonnet8.sandbox.internal.codec`
+／`internal.transport` パッケージを新設し、内部専用であることをパッケージ名
+自体で示しつつ public にした**（OkHttp の `okhttp3.internal.*` と同じ
+慣習）。計画時点では単に `codec`/`transport` という名前を想定していたが、
+実装中にこの制約に気づいて `internal.` を挟む設計に変更した——ユーザーに
+確認を要する製品判断ではなく実装詳細の変更のため、その場で決めて進めた。
+
+**数値の忠実性**: フェーズ⑧の設計をそのまま移植。`NumberToken(String raw)`
+が線上のトークンをそのまま保持し、`.`/`e`/`E` を含めば REAL(`Double`)、
+含まなければ INTEGER(`Long`)。送出側の `realToken(double)` は
+`Double.toString` が常に `.` か指数を含む性質を使い、Go の `formatReal`・
+Rust の `real_token` に相当するガードを実装（末尾のガードは保険）。
+`Double.parseDouble("9e999")` が `Infinity` に飽和するだけで Go のような
+`ErrRange` 同時返却が無い点も Rust と同じく簡略化された。
+
+**トランスポート**: 直結（`DirectTransport`）は読み取りスレッド＋
+`ArrayBlockingQueue(1)` 方式（Rust の `sync_channel(1)` の直訳）。
+`Thread.join(long)` は Python と同じ本物の期限付き join のため、Rust の
+`ThreadedReader::join` が踏んだ「期限超過後に無期限 join へ落ちる」バグ
+自体は Java では起きない。ソケット（`SocketTransport`）はスレッド無しの
+インライン framer 方式で、**Java は Rust より TLS の継ぎ目が強い**——
+`javax.net.ssl.SSLSocket extends java.net.Socket` なので、`connectSocket`
+がそのまま TLS を受け、**read timeout をドライバ自身が呼び出しのたびに
+`Socket.setSoTimeout` で設定できる**（Rust が「強制できない唯一の契約」と
+書いていた穴がここには無い）。読み取りタイムアウトの機構が経路ごとに
+異なる点は Java 固有の複雑さで、直結は読み取りスレッド、TCP/TLS は
+`Socket.setSoTimeout`、UNIX ドメインソケットは `SO_TIMEOUT` が存在しない
+ため非ブロッキング `SocketChannel` ＋ `Selector` という3種類の機構を
+`TimedByteSource` インターフェース1つに集約した。
+
+Rust で苦労した3点（SIGTERM・`wait()` の期限・stderr 排出）は Java では
+消える——`Process.destroy()` が Unix では SIGTERM そのもの、
+`Process.waitFor(long, TimeUnit)` が標準で期限付き、
+`ProcessBuilder.redirectError(Redirect.DISCARD)` でスレッドすら要らない。
+ただし**残った1点が Java 固有の罠**: シグナルで死んだ子プロセスの終了
+コードの規約が5言語で異なり、Python/Rust は `-signum`、Go は `-1`、
+**Java（OpenJDK の POSIX 実装）は `128 + signum`**（SIGTERM なら `143`、
+SIGKILL なら `137`。シェルの `$?` と同じ慣習）として `Process.exitValue()`
+が返す。これは `DirectTransportTest` の SIGTERM/SIGKILL エスカレーション
+テスト（`exitCode()==143`・`==137`）で実機確認済み。Java の規約のまま
+返すと決め（`-signum` への変換はしない）、同じ JVM 上の
+`Process.exitValue()` と食い違わないようにした。
+
+**例外設計**: `internal.codec.CodecException`・`internal.transport.
+TransportException` はいずれも非チェック例外とし、公開境界（`Session`・
+`SanDbOx`）でのみ公開のチェック例外（`SanDbOxException` とその
+サブクラス `ResponseException`/`ProtocolViolationException`/
+`ReadTimeoutException`/`ConnectionClosedException`）へ変換する。
+**実装中に見つけた罠**: `Session.query()` 等で
+`call(new RequestBuilder("query").field("sql", sql).params(params))` の
+ように `RequestBuilder` を**呼び出し側の引数式として**組み立てていたため、
+`.params(params)` が投げる `CodecException`（非有限 REAL・`Boolean` 拒否
+等）が `call()` メソッド本体に入る前——つまり `call()` 内の try/catch を
+一切経由せずに送出され、`usage.ClientTest` の実機テストで生の内部例外が
+外に漏れていることが発覚した。修正は `call()` の引数を
+`Supplier<RequestBuilder>` に変え、リクエスト構築そのものを `call()`
+自身の try ブロック内で評価するようにしたこと。加えて `SanDbOx.connect*`
+の4メソッドも、接続確立時点（`DirectTransport.start`/`SocketTransport.
+connectTcp` 等）で投げる `TransportException` を素通りさせていたバグが
+あり、`Session.translate()` を package-private に開放して同様に修正した。
+——「内部層は非チェック例外、公開境界だけが変換する」という設計は、
+**変換ロジックを呼び出す場所を型システムが強制してくれない**ため、
+境界を1箇所でも通し忘れると即座に漏れる、という教訓（Rust なら
+`Result` の伝播漏れはコンパイルエラーになるところ、Java の非チェック例外
+は黙って素通りする）。
+
+**netcheck**: `jdeps`（JDK 同梱の依存解析ツール）を
+`java.util.spi.ToolProvider.findFirst("jdeps")` でサブプロセス無しに
+呼び出し、`internal.codec` パッケージのコンパイル済みクラスを解析。
+Rust のテキスト走査と違い**本物の依存グラフ**が取れる。禁止プレフィックス
+（`java.net.`/`java.nio.channels.`/`java.nio.file.`/`java.lang.Process`/
+`java.lang.Thread`/`java.io.`/`java.util.concurrent.`）との照合と、
+`internal.transport` への陽性対照（1件以上の検出を要求）を実装。
+`jdeps` が見つからない場合は skip ではなく fail にした。
+
+**直結専用APIの型分離**: `overwrite()`/`exitCode()` を `SanDbOxClient`
+にだけ置き `SocketClient` には存在させない設計自体は他4言語と同じだが、
+それが壊れていないことの検証に **`javax.tools.JavaCompiler`**（JDK
+同梱・追加依存ゼロ）でテスト時にスニペットをコンパイルし失敗を assert する
+`CompileFailTest` を実装（Rust の `compile_fail` doctest・TypeScript の
+`// @ts-expect-error` の Java 版）。Rust と異なり `Object` ベースの値
+表現を採ったため、`Boolean` param の拒否はコンパイル時には縛れず実行時
+エラーになる——Go と同じ制約であり、テストとREADMEの両方に明記した。
+
+**実装中に踏んだ罠（上記2件に加えてもう1件）**: `usage/SocketTest`（UNIX
+ドメインソケット経由で本体プロセスとのブリッジを構築する結合テスト）を
+最初 `java.nio.channels.Channels.newInputStream`/`newOutputStream` で
+書いたところ、双方向に同時ポンピングすると**書き込みが成功を返すのに
+相手に届かない**という現象が起き、テストがタイムアウトでハングした。
+単純な単発の読み書きでは再現せず、2本のスレッドが同じ `SocketChannel` を
+別方向へ同時にポンピングする構成で初めて再現する、この JDK での
+`Channels` ラッパの実装依存の不具合と見られる。`internal.transport.
+ChannelSource` が既に使っていた生の `ByteBuffer` 直接読み書きに切り替えて
+解消した（`SocketTransportTest` の UNIX 経路の単体テストは最初から
+この方式で書いていたため影響を受けていなかった）。
+
+**実機検証**: SSH forced command 経由の `SanDbOx.connect("ssh", ...)`
+（非 root・カスタムポートで一時 sshd を起動。hello・`query` 往復、
+任意コマンド送信の無視、強制 `--read-only` の実効性）と、socat
+`OPENSSL-LISTEN` 越しの mTLS（`SSLSocket` → `connectSocket`、正しい
+クライアント証明書での成功、CA チェーン外証明書の拒否、駆動レベルの
+タイムアウト設定が TLS 越しの読み取りを実際に束縛すること）を、他4言語と
+同じ手順で実施。**TLS 1.3 特有の発見**: `SSLSocket.startHandshake()` が
+例外を投げずに完了しても、それだけではサーバが証明書を受理した証拠には
+ならない——TLS 1.3 はクライアント側のハンドシェイク完了とサーバ側の
+非同期拒否アラート処理の間に競合があり、拒否は1テンポ遅れて最初の実際の
+読み取り時に現れる。`connectSocket` 自身が最初に行う hello 行の読み取り
+がこの検証を担っており、`SanDbOxException`（`Received fatal alert:
+unknown_ca` を包む）が投げられることを繰り返し実行して確認した。
+Java は他3言語と違い PEM 証明書を直接読めないため、検証には
+`openssl pkcs12 -export`/`keytool -importcert` による PKCS#12 キーストア
+への変換手順を挟んだ（この変換手順は `docs/usage/connecting*.md` にも
+明記した）。
+
+**テスト**: 単体テスト62件（`internal.codec`/`internal.transport`）＋
+結合テスト `usage.ClientTest`(18)・`usage.SocketTest`(4)＋
+`ConformanceTest`(7)・`MatchTest`(8)・`NetcheckTest`(2)・
+`CompileFailTest`(4)の計111件、`make java-test` で 17・25 の両方の
+JDK で全緑（`JAVA_HOME` を切り替えて2回実行して確認）。netcheck は
+意図的に `java.net.Socket` 参照を `internal.codec` へ混入させて失格
+すること、陽性対照の対象パッケージを存在しないものに変えて陽性対照自体が
+失格すること、`CompileFailTest` は `SocketClient` に `overwrite()` を
+一時的に生やして失格することの、3種類すべてを実機で確認済み。javadoc は
+`-Xdoclint:all,-missing`（タグ欠落は無視しつつ壊れた `{@link}` 等の構文は
+検出）＋ `failOnWarnings=true` で、壊れた `{@link}` を一時的に仕込んで
+ビルドが実際に失敗することも確認した。
+
+**Makefile / CI**: `java-build`/`java-javadoc`/`java-netcheck`/
+`java-test` を追加（実行時依存ゼロ、テスト依存は JUnit 5 のみなので
+`python-venv`/`typescript-deps` のようなインストール手順・スタンプ
+ファイルは不要）。CI は `java` ジョブを追加し `["17","25"]` をマトリクス化
+（`actions/setup-java@v5`、`distribution: temurin`）。
+
+**利用者向けドキュメント**（`.claude/`・`CLAUDE.md`・`PLAN.md` を一切
+参照しない）: ルート `README.md`/`README_ja.md` の言語表に Java 行を
+追加。`java/README.md` を `rust/README.md` と同じ節構成で新規作成
+（英語のみ。`Boolean` が param にならず実行時エラーになる点、
+`AutoCloseable`/try-with-resources が接続を閉じる点、`exitCode()` が
+Java の規約（`128+signum`）で返す点を明記）。
+`docs/usage/connecting.md`/`connecting_ja.md` の6箇所（Local・SSH
+リモートコマンド・Docker・Kubernetes・素のソケット・TLS/mTLS）に Java
+の例を追加（計12編集）し、TLS 節には Java 固有の説明（`SSLSocket
+extends Socket` により read timeout をドライバ自身が設定できる、PEM
+証明書を直接読めないため PKCS#12 変換が要る）を追加、SSH forced
+command・TLS/mTLS の「実際に検証した内容」にも Java の確認結果（TLS 1.3
+の競合の発見を含む）を追記した。
+
+**内部ルールの更新**: `.claude/rules/naming.md` に Java の行
+（Maven 座標・パッケージ名に第3段表記 `sandbox` を使う理由）、
+`.claude/rules/distribution.md` の配布表に
+`| Java | Maven Central | java/vX.Y.Z |` を追加。
+`.devcontainer/devcontainer.json` に公式
+`ghcr.io/devcontainers/features/java:1`（`version: "17"`、
+`additionalVersions: "25"`、`jdkDistro: "tem"`、`installMaven: true`。
+`additionalVersions` が実在のオプションであることは feature の
+`devcontainer-feature.json` を実機確認済み）と `redhat.java`/
+`vscjava.vscode-maven` 拡張・`[java]` フォーマッタ設定を追加。
+
+`.claude/settings.json` の `PostToolUse` フックへの Java 用分岐追加は
+提案してユーザー承認を得て適用済み（`*java/*.java`・`*java/pom.xml`
+編集後に `make java-build` を自動実行。Go/Rust の `*-build` と同じ
+パターン。シミュレーションで実際に発火することと、無関係なファイルでは
+発火しないことの両方を確認済み）。
+
+**この作業でやらなかったこと**: Maven Central への実際の publish
+（③配布・公開はスコープ外、ユーザー作業として後続——GPG鍵・Central
+Portal アカウント・`io.github.amisonnet8` namespace 所有確認が必要。
+`pom.xml` の `release` プロファイルに source/javadoc jar・GPG署名・
+`central-publishing-maven-plugin` を先に仕込み済みなので、ユーザー側は
+`mvn -Prelease deploy` 1コマンドで済む状態にしてある）。
+
+**次はフェーズ⑩（6番目の言語）——需要を見て検討する。**
 
 ## GitHub リポジトリ設定（決定事項、リポジトリ作成時に設定）
 
@@ -794,7 +1002,19 @@ Rust の4言語すべてが実装・公開済みになった。
     `rust-analyzer.linkedProjects` 設定も同時に追記した。
     `devcontainer-lock.json` は Python のときと同じ理由で未更新のまま
     ——次回実際にコンテナをリビルドするタイミングで自動生成させること。
+  - **Java（apt の openjdk-17-jdk・maven ＋ Temurin 25 の tarball手動展開）
+    はフェーズ⑨のセッションで手動導入し、`devcontainer.json` の
+    features にも公式 `ghcr.io/devcontainers/features/java:1`
+    （`version: "17"`、`additionalVersions: "25"`、`jdkDistro: "tem"`、
+    `installMaven: true`）を直接反映済み**。`redhat.java`・
+    `vscjava.vscode-maven` 拡張と `[java]` フォーマッタ設定も同時に
+    追記した。`devcontainer-lock.json` は同じ理由で未更新のまま——次回
+    実際にコンテナをリビルドするタイミングで自動生成させること。
 - ~~`PostToolUse` フックへの Rust 用分岐は未提案~~ → **導入済み。**
   `*rust/*.rs`・`*rust/Cargo.toml` への Edit/Write 後に `make rust-build`
+  を自動実行するフックを `.claude/settings.json` に追加（実際に発火する
+  ことと無関係なファイルでは発火しないことの両方を確認済み）。
+- ~~`PostToolUse` フックへの Java 用分岐は未提案~~ → **導入済み。**
+  `*java/*.java`・`*java/pom.xml` への Edit/Write 後に `make java-build`
   を自動実行するフックを `.claude/settings.json` に追加（実際に発火する
   ことと無関係なファイルでは発火しないことの両方を確認済み）。

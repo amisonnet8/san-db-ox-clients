@@ -2,7 +2,8 @@
 	python-venv python-lint python-typecheck python-netcheck python-test \
 	typescript-deps typescript-build typescript-build-test typescript-lint \
 	typescript-typecheck typescript-netcheck typescript-test \
-	rust-build rust-fmt rust-lint rust-netcheck rust-test
+	rust-build rust-fmt rust-lint rust-netcheck rust-test \
+	java-build java-javadoc java-netcheck java-test
 
 # ShellCheck every tracked shell script. git ls-files enumerates them so a
 # new script needs no Makefile change (mirrors san-db-ox's own `make
@@ -202,3 +203,40 @@ rust-netcheck:
 rust-test: fetch
 	cd $(RUST_DIR) && $(CARGO) test --all-targets
 	cd $(RUST_DIR) && $(CARGO) test --doc
+
+# Java targets are prefixed java- (.claude/rules/directory-structure.md,
+# same reasoning as go-/python-/typescript-/rust-). Runtime dependencies
+# are zero, matching all four: the JSON codec is hand-written. JUnit 5 is
+# a test-scope dependency only, so unlike python-venv/typescript-deps
+# there is no separate install step or stamp file -- Maven's own
+# incremental build in java/target/ is the whole story, same as Rust's
+# cargo/target/.
+
+MVN ?= mvn
+JAVA_DIR := java
+
+java-build:
+	cd $(JAVA_DIR) && $(MVN) -q -B test-compile
+
+# -Xdoclint:all (configured in pom.xml) turns a broken doc comment into a
+# build failure, this driver's equivalent of `cargo doc`. Also the
+# earliest point at which a docs.rs-style publication problem (javadoc.io
+# mirrors Maven Central) would surface, well before phase (3) publish.
+java-javadoc:
+	cd $(JAVA_DIR) && $(MVN) -q -B javadoc:javadoc
+
+# Same idea as go-netcheck/python-netcheck/typescript-netcheck/rust-netcheck
+# (.claude/rules/architecture.md): confirms the codec package stays free of
+# networking, process, and threading machinery. Unlike Rust's textual
+# scanner, this uses jdeps (bundled with the JDK) for a real dependency
+# graph, plus a positive control against the transport package (must
+# produce at least one hit) to guard against the scanner itself silently
+# breaking. Depends on java-build because it inspects compiled classes.
+java-netcheck: java-build
+	cd $(JAVA_DIR) && $(MVN) -q -B surefire:test -Dtest=NetcheckTest
+
+# fetch dependency mirrors go-test/python-test/typescript-test/rust-test:
+# individual tests skip (not fail) when no san-db-ox binary is found
+# (.claude/rules/testing.md).
+java-test: fetch
+	cd $(JAVA_DIR) && $(MVN) -B test
