@@ -30,6 +30,10 @@
           {
             "type": "command",
             "command": "jq -r '.tool_input.file_path // .tool_response.filePath // empty' | { read -r f; case \"$f\" in *typescript/*.ts|*typescript/package.json) cd /workspaces/san-db-ox-clients && make typescript-typecheck ;; esac; }"
+          },
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // .tool_response.filePath // empty' | { read -r f; case \"$f\" in *rust/*.rs|*rust/Cargo.toml) cd /workspaces/san-db-ox-clients && make rust-build ;; esac; }"
           }
         ]
       }

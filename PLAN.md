@@ -718,9 +718,10 @@ clippy/rustfmt 込み）と `rust-lang.rust-analyzer` 拡張・
 公開はスコープ外、ユーザー作業として後続——PyPI・npm と同じ進め方）。
 
 `.claude/settings.json` の `PostToolUse` フックへの Rust 用分岐追加は
-まだ提案していない——次のユーザーとのやり取りで提案する
-（Go の `go-build` に倣い、`make rust-lint` ではなく `make rust-build`
-を編集ごとに走らせる想定。clippy は毎編集には遅いため）。
+提案してユーザー承認を得て適用済み（`*rust/*.rs`・`*rust/Cargo.toml`
+編集後に `make rust-build` を自動実行。Go の `go-build` と同じパターン。
+シミュレーションで実際に発火することと、無関係なファイルでは発火しない
+ことの両方を確認済み）。
 
 **次はフェーズ⑨（5番目の言語）——需要を見て検討する。**
 
@@ -787,8 +788,7 @@ clippy/rustfmt 込み）と `rust-lang.rust-analyzer` 拡張・
     `rust-analyzer.linkedProjects` 設定も同時に追記した。
     `devcontainer-lock.json` は Python のときと同じ理由で未更新のまま
     ——次回実際にコンテナをリビルドするタイミングで自動生成させること。
-- **`PostToolUse` フックへの Rust 用分岐は未提案**。Go の `go-build`
-  に倣い `*rust/*.rs`・`*rust/Cargo.toml` 編集後に `make rust-build` を
-  自動実行する案を、次にユーザーとやり取りする際に提案すること
-  （CLAUDE.md「ルール・スキルの提案」方針により、提案するだけで勝手に
-  適用しない）。
+- ~~`PostToolUse` フックへの Rust 用分岐は未提案~~ → **導入済み。**
+  `*rust/*.rs`・`*rust/Cargo.toml` への Edit/Write 後に `make rust-build`
+  を自動実行するフックを `.claude/settings.json` に追加（実際に発火する
+  ことと無関係なファイルでは発火しないことの両方を確認済み）。
