@@ -59,3 +59,23 @@ jobs:
       - run: make go-vet
       - run: make go-netcheck
       - run: make go-test
+
+  # ubuntu-latest 限定（go ジョブと同じ理由）。バージョンはマトリクスにする
+  # -- go-version-file 相当の「宣言した下限を実行時に守れているか」を保証
+  # する仕組みが Python 側には無いため、requires-python の下限(3.10)と
+  # 直近のマイナー版の両方を実際に実行して確かめる。
+  python:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.13"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: make python-lint
+      - run: make python-typecheck
+      - run: make python-netcheck
+      - run: make python-test

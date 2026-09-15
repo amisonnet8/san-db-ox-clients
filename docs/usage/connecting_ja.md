@@ -40,6 +40,12 @@ Go ドライバからは、この子プロセス起動を `sandbox.Open` に委�
 c, err := sandbox.Open(ctx, "bin/san-db-ox", []string{"--serve-stdio"})
 ```
 
+Python ドライバの `connect` も同様。
+
+```python
+c = san_db_ox.connect("bin/san-db-ox", ["--serve-stdio"])
+```
+
 ### SSH リモートコマンド直結
 
 サーバ側に手を加えず、単に `ssh` 経由で `san-db-ox --serve-stdio` を
@@ -58,6 +64,12 @@ Go ドライバも、起動するコマンドと引数を差し替えるだけ�
 
 ```go
 c, err := sandbox.Open(ctx, "ssh", []string{"user@host", "san-db-ox", "--serve-stdio"})
+```
+
+Python ドライバも同様に SSH 専用のコンストラクタは持たない。
+
+```python
+c = san_db_ox.connect("ssh", ["user@host", "san-db-ox", "--serve-stdio"])
 ```
 
 ### SSH forced command（推奨経路）
@@ -100,6 +112,8 @@ devcontainer に導入済み。テストのたびに `sudo /usr/sbin/sshd -p <po
 - Go ドライバの `sandbox.Open(ctx, "ssh", []string{...})` が、この
   forced command 経路に対しても他の起動コマンドと同じように使えることを
   確認した（SSH 専用のコードパスは存在しない）。
+- Python ドライバの `san_db_ox.connect("ssh", [...])` についても同様に
+  確認した。
 
 **読み書き両方を許す鍵と読み取り専用の鍵は、`authorized_keys` の別エントリ
 （別の鍵ペア）として分けて発行すること。** 1つの鍵に両方の権限を持たせて
@@ -115,6 +129,10 @@ docker run -i --rm <image> --serve-stdio
 c, err := sandbox.Open(ctx, "docker", []string{"run", "-i", "--rm", image, "--serve-stdio"})
 ```
 
+```python
+c = san_db_ox.connect("docker", ["run", "-i", "--rm", image, "--serve-stdio"])
+```
+
 ### Kubernetes
 
 ```bash
@@ -123,6 +141,10 @@ kubectl exec -i <pod> -- san-db-ox --serve-stdio
 
 ```go
 c, err := sandbox.Open(ctx, "kubectl", []string{"exec", "-i", pod, "--", "san-db-ox", "--serve-stdio"})
+```
+
+```python
+c = san_db_ox.connect("kubectl", ["exec", "-i", pod, "--", "san-db-ox", "--serve-stdio"])
 ```
 
 ## socat 経由（ソケット）
@@ -156,6 +178,12 @@ socat TCP-LISTEN:5432,fork,bind=127.0.0.1 EXEC:"san-db-ox --read-only --serve-st
 c, err := sandbox.OpenSocket(ctx, "unix", "/tmp/sandbox.sock")
 // または
 c, err := sandbox.OpenSocket(ctx, "tcp", "127.0.0.1:5432")
+```
+
+```python
+c = san_db_ox.connect_unix("/tmp/sandbox.sock")
+# または
+c = san_db_ox.connect_tcp("127.0.0.1", 5432)
 ```
 
 ### TLS/mTLS（クライアント証明書による認証）
@@ -223,6 +251,25 @@ c, err := sandbox.OpenSocketConn(ctx, nc)
 
 この組み合わせ（`tls.Dial` → `OpenSocketConn`）を実際に動かし、hello 行・
 `query` の往復を確認済み。
+
+Python ドライバも同じ形——TLS 専用のコンストラクタは持たず、
+`ssl.SSLContext.wrap_socket` の戻り値をそのまま `connect_socket` に渡す。
+
+```python
+ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+ctx.load_verify_locations("ca.pem")
+ctx.load_cert_chain("client-cert.pem", "client-key.pem")
+
+raw = socket.create_connection(("host", 5432))
+tls_sock = ctx.wrap_socket(raw, server_hostname="sandbox.example.com")
+c = san_db_ox.connect_socket(tls_sock)
+```
+
+同じ socat 待受に対してこの組み合わせも実際に動かし、hello 行・`query`
+の往復を確認済み。CA チェーン外のクライアント証明書がサーバ側で拒否
+される（`SSL_accept(): certificate verify failed`）ことも、どちらの
+ドライバで接続しても同じ結果になることを確認した——この検証は socat
+側だけで完結している。
 
 ### 接続元IP アドレスの制限
 

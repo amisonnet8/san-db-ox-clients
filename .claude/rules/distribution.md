@@ -8,7 +8,7 @@
 | 言語 | 配布先 | タグ規則 |
 | :--- | :--- | :--- |
 | Go | Go modules（pkg.go.dev から参照可能） | `go/vX.Y.Z`（`naming.md` 参照） |
-| Python | PyPI | （フェーズ⑥で確定） |
+| Python | PyPI | `python/vX.Y.Z`（`naming.md` 参照） |
 | TypeScript | npm | （フェーズ⑥以降で確定） |
 
 **統一ランチャーやインストーラは作らない。** 「`san-db-ox-clients` を

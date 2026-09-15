@@ -9,7 +9,8 @@
 3. **③Go ドライバ: コーデック層＋直結トランスポート**: 完了。
 4. **④Go ドライバ: ソケットトランスポート（オプション層）**: 完了。
 5. **⑤ドキュメント・配布**: 完了。
-6. **⑥以降 他言語への展開【現在地】**: Python → TypeScript →（需要を見て
+6. **⑥ Python ドライバ**: 完了。
+7. **⑦以降 他言語への展開【現在地】**: TypeScript →（需要を見て
    Rust / JVM(Java・Kotlin) / Ruby / C#(.NET) / PHP / C）。
 
 ## 言語の優先順位の根拠
@@ -30,7 +31,13 @@ stdio結合、SQL学習サンドボックス）を軸に検討した結果:
 
 ## 現在地
 
-**フェーズ①〜⑤完了。フェーズ⑥（他言語への展開、Python から）着手前。**
+**フェーズ①〜⑥完了。フェーズ⑦（TypeScript）着手前。**
+
+### 開発の進め方（フェーズ⑥で確定した方針）
+
+新しい言語ドライバへの展開は「①計画→②実装（一気に実施）→③配布・公開
+（ユーザー作業を含むことがある）」の3段階で進める（ユーザー指定、
+2026-09-15）。フェーズ⑦以降もこれに従う。
 
 ### フェーズ①・②の要約
 
@@ -242,7 +249,134 @@ stdio結合、SQL学習サンドボックス）を軸に検討した結果:
 `/etc/hosts.allow`/`deny` を書き換える必要があるため紹介のみに留めた）、
 他言語（Python 等）の README 新設。
 
-**次はフェーズ⑥（他言語への展開、Python から）。**
+### フェーズ⑥（Python ドライバ）で行ったこと
+
+Go ドライバをリファレンス実装として、`python/` 配下に Python ドライバを
+新規作成した。**外部依存ゼロ**（標準ライブラリのみ）。
+
+- **確定した方針**（ユーザー承認、2026-09-15）: 同期 API のみ（asyncio
+  版は作らない）／PyPI 配布名 `san-db-ox`・import 名 `san_db_ox`
+  （どちらも PyPI 未登録であることを事前に確認）／最低 Python
+  3.10／標準 `venv` + `pip`（uv は使わない）／開発依存は
+  pytest・ruff・mypy のみ。
+- **`python/src/san_db_ox/`** — `naming.md` の表に追記した構成
+  （`_codec.py`・`_transport.py`・`_client.py`・`__init__.py`・
+  `py.typed`）。
+  - **`_codec.py`**: I/O を一切知らない純粋層。Go の codec 層と1対1対応
+    するが、Python 固有の単純化がいくつかある——Python の `json.loads`
+    は数値トークンの小数点有無で int/float を自然に分けるため、Go が
+    自前で持つ数値トークン解釈（`decodeNumber`）は不要。有限 float の
+    `repr()` は必ず `.`/`e` を含むため、Go の「小数点を必ず残す独自
+    フォーマッタ」も不要（ただし自明でないためコードにコメントを残した）。
+    一方 Python 固有で追加が要った検証: **`bool` を params から明示的に
+    拒否**（`isinstance(True, int)` が真であるため、int チェックより前に
+    弾く）、**int の int64 範囲外を明示的に拒否**（Python の int は
+    多倍長で自動では弾かれない）。例外階層は `SanDBoxError`（基底）・
+    `ResponseError`（`.code`/`.message`、コード定数5種）・
+    `ProtocolError`・`SanDBoxTimeoutError`。
+  - **`_transport.py`**: `DirectTransport`（`subprocess.Popen`）・
+    `SocketTransport`（`socket`）。**行読み取りスレッドをここに置く**
+    設計にした（Go は session 層に置く）——ブロック中の read を解除する
+    方法がトランスポートごとに違う（直結はプロセスを終了させる、ソケットは
+    `shutdown()`）ため。`queue.Queue(maxsize=1)` で Go の `chan` の
+    バックプレッシャを再現し、終端（EOF/エラー）は sticky な属性として
+    保持（`queue.Queue` に `close()` が無いため）。段階的 Close は
+    `stdin.close()` → `wait` → `terminate()` → `wait` → `kill()`。
+    stderr drain は既定 `DEVNULL`、シンク指定時のみ `PIPE` + drain
+    スレッド。**`Popen` のパイプはバッファ付きのため `write()` の直後に
+    必ず `flush()`** が必要（Go の生パイプには無い制約）。
+  - **`_client.py`**: `_Session`（hello 検証・直列化・call/response）を
+    `Client`（直結）・`SocketClient`（ソケット）が保持。**`overwrite`・
+    `exit_code` は `Client` にのみ実装**（`SocketClient` には存在しない。
+    mypy の属性チェックとテストの両方で保証）。`Connection`
+    （`typing.Protocol`）が Go の `Conn` インターフェースに対応。
+    タイムアウトは `_UNSET` センチネルで「未指定＝接続時の既定値」と
+    「明示 `None`＝無期限」を区別。`with ... as c:` に対応（`__enter__`
+    は `TypeVar` で自己型を返し、サブクラスの属性が mypy から見えるように
+    した）。
+- **`python/netcheck.py`（`make python-netcheck`）**: `go-netcheck` の
+  Python 版。**素朴に `import san_db_ox._codec` すると親の `__init__.py`
+  が先に走り `_client` 経由で `subprocess`/`socket` を引き込んでしまう**
+  ため、`__path__` を持つ合成パッケージ経由で `_codec.py` だけを
+  `__init__.py` を実行せずに単独ロードし、`sys.modules` の新規追加分
+  （読み込み前後の差分）に禁止モジュールが無いことを検証。静的側は
+  `ast` で `_codec.py` 自身の import をホワイトリストと照合。
+- **テスト**（`python/tests/`、pytest）: Go のテストファイル群と1対1で
+  対応。`test_codec.py`（バイナリ不要）・`test_transport.py`（`cat`/`sh`
+  fixture、stderr 洪水・段階的 Close・SIGTERM エスカレーション）・
+  `test_client.py`（実バイナリ、hello・値の往復・エラーコード・
+  `--read-only` の2段階拒否・snapshot/load・inspect・close の冪等性・
+  overwrite・呼び出しタイムアウト時のセッション破棄・`SocketClient` に
+  `overwrite`/`exit_code` が無いこと）・`test_socket.py`（`SocketTransport`
+  の dial/wrap/close、in-process ブリッジ経由の `SocketClient`、実機
+  socat）・`_conformance_support.py` + `test_match.py` + `test_conformance.py`
+  （後述）。
+  - **conformance ランナー**: Go は `json.RawMessage` + `json.Number` で
+    数値のリテラルトークンを保持するが、Python は `json.loads` の
+    `parse_int`/`parse_float` フックが**数値トークンの元テキストを
+    そのまま**渡してくるため、これを `Num`（`NamedTuple`、`str` の
+    サブクラスにはしない——`Num("88") == "88"` を許すと文字列の期待値と
+    誤って一致してしまうため）に包んで同じ効果を得た。`dumps_literal()`
+    で `Num` を含む構造をそのままの文字列で再直列化し、Go の
+    `json.RawMessage` 転送と同じ忠実さでリクエストを送信。`match_json()`
+    が `matchJSON`/`match_test.go` の意味論（オブジェクトは部分一致、
+    それ以外は完全一致、数値はリテラルトークン比較）を再現。
+    `known_failing` は `pytest.mark.xfail` を使わず（xfail はトランス
+    ポート層の失敗まで飲み込んでしまうため）、値の不一致だけを
+    握りつぶし、read/write エラー・タイムアウト・JSON パース失敗は
+    `known_failing` の有無に関係なく即 fail する Go と同じ設計。6ケース
+    全て `known_failing` 無しで green。
+  - **実装中に踏んだ罠（2件）**: (1) `_LineReader` を使わない socat 代替
+    ブリッジ実装で `BufferedReader.read(n)` を使うと `n` バイト貯まるまで
+    ブロックし、短い hello 行が届かず接続がタイムアウトする——`read1(n)`
+    （単発の生読み取りで即座に返す）に直す必要があった。(2) `netcheck.py`
+    自身が `pathlib` を import すると `urllib.parse` が連鎖的に
+    `sys.modules` に載り、素朴な「読み込み後の `sys.modules` 全体」検査が
+    誤検知する——読み込み前後の**差分**だけを見るように修正。
+  - 全101テスト green（`make fetch && make python-test`）、
+    `make python-lint`・`make python-typecheck`（strict）・
+    `make python-netcheck` も green。
+- **実機検証（このセッション内で実施、`docs/usage/connecting*.md` に
+  記載）**: ローカル直結・SSH forced command・socat 経由の TLS/mTLS
+  （正しいクライアント証明書での接続成功、CA チェーン外の証明書が
+  `SSL_accept(): certificate verify failed` でサーバ側から拒否される
+  ことの両方）を、一時的な sshd・socat・自己署名証明書一式を用意して
+  Python ドライバに対して実際に確認した。Go 側の既存の検証記録
+  （`connecting.md`）に Python の確認結果を追記する形にした。
+- **`Makefile`**: `python-venv`/`python-lint`/`python-typecheck`/
+  `python-netcheck`/`python-test`（`fetch` 依存）を追加。`go-` と対称の
+  `python-` プレフィックス。
+- **CI（`.github/workflows/test.yml`）**: `python` ジョブを追加
+  （`ubuntu-latest`、`actions/setup-python`、`python-version` は
+  `["3.10", "3.13"]` のマトリクス——`go-version-file` に相当する
+  「宣言した下限を実行時に守れているか」の保証が Python 側に無いため、
+  下限と最新の両方を実行して確かめる）。
+- **`.devcontainer/devcontainer.json`**: 公式 feature
+  `ghcr.io/devcontainers/features/python:1`（`version: "3.11"`）を追加。
+  VS Code 拡張に `ms-python.python`・`charliermarsh.ruff`、
+  `python.defaultInterpreterPath` を設定。**このセッションでは
+  `sudo apt-get install python3 python3-venv` により手動導入した状態で
+  進めた**（`gh` の前例と同様、devcontainer.json は今回のうちに反映し、
+  次回リビルド時に自動で入るようにした）。
+- **利用者向けドキュメント**（`.claude/`・`CLAUDE.md`・`PLAN.md` を
+  一切参照しない境界を維持）: `python/README.md`（`go/README.md` が
+  雛形）、ルート `README.md`/`README_ja.md` の言語表、
+  `docs/usage/connecting.md`/`connecting_ja.md` の6箇所（ローカル・SSH
+  リモートコマンド・Docker・Kubernetes・素のソケット・TLS/mTLS）に
+  Python のコード例を Go の例と併記。
+- **内部ルールの更新**: `naming.md`・`distribution.md` に Python の行を
+  追記（PyPI 名の予約状況を確認済みにしたため「フェーズ⑥で確定」の
+  記述を確定値に置き換え）。
+
+**この作業でやらなかったこと**: `python/` の日本語 README（`go/README.md`
+と同じく英語のみ、日英順序ルールの対象外——ルート README とは異なり言語
+ディレクトリ配下の README は元から英語のみの方針）、PyPI への実際の
+公開（アカウント・トークンが要るためユーザー作業として別途）、
+`devcontainer-lock.json` の再生成（`devcontainer` CLI が無く手動更新は
+ハッシュを捏造することになるため、次回実際にコンテナをリビルドする
+タイミングで自動生成させる）。
+
+**次はフェーズ⑦（TypeScript）。**
 
 ## GitHub リポジトリ設定（決定事項、リポジトリ作成時に設定）
 
@@ -266,10 +400,10 @@ stdio結合、SQL学習サンドボックス）を軸に検討した結果:
 
 ## 未確認事項（実装前に決める・確かめる）
 
-- devcontainer に `sshd` が入っていないため、SSH 直結の実地確認
-  （`.claude/rules/connectivity.md`）は `openssh-client` の範囲でのみ
-  行った。ローカルの sshd を使った end-to-end 確認は、実際にドライバの
-  SSH 経路を実装する際に別途行うこと。
+- ~~devcontainer に `sshd` が入っていないため……~~ → **解消。**
+  フェーズ⑤・⑥それぞれで `sudo /usr/sbin/sshd` を一時起動し、forced
+  command 経由の SSH 直結を Go・Python 両ドライバに対して end-to-end で
+  確認済み（`docs/usage/connecting.md` の該当節参照）。
 
 ## 保留事項
 
@@ -277,8 +411,10 @@ stdio結合、SQL学習サンドボックス）を軸に検討した結果:
   `go/go.mod`・`go/go.sum` への Edit/Write 後に `make go-build` を
   自動実行するフックを `.claude/settings.json` に追加（実際に発火する
   ことをセンチネルファイルで確認済み）。
-- **PyPI / npm のパッケージ名の予約状況が未確認。** フェーズ⑥（Python）・
-  それ以降（TypeScript）で確認する。
+- ~~PyPI / npm のパッケージ名の予約状況が未確認~~ → **Python 側は解消。**
+  `san-db-ox`・`san-db-ox-client` とも PyPI 未登録を確認し `san-db-ox`
+  に確定（`naming.md`・`distribution.md` 反映済み）。npm 側は
+  TypeScript 着手時に確認する。
 - **devcontainer.json 反映待ちリスト**: 現行コンテナはリビルドせずに
   開発を進める方針（都度手動でインストール・設定して進め、区切りでまとめて
   `devcontainer.json` へ反映する）。session内で手動インストール・設定を
@@ -286,3 +422,9 @@ stdio結合、SQL学習サンドボックス）を軸に検討した結果:
   - **`gh`（GitHub CLI）はこのセッションで `postCreate.sh` に直接反映
     済み**（`.devcontainer/postCreate.sh` 参照）。次回リビルド時は自動で
     入るため、このリストには残さない。
+  - **Python（`python3`/`python3-venv`）はフェーズ⑥のセッションで
+    `sudo apt-get install` により手動導入し、`devcontainer.json` の
+    features にも公式 `ghcr.io/devcontainers/features/python:1` を
+    直接反映済み**。ただし `devcontainer-lock.json` は `devcontainer`
+    CLI が無く手動更新するとハッシュを捏造することになるため未更新——
+    次回実際にコンテナをリビルドするタイミングで自動生成させること。

@@ -28,7 +28,7 @@ stdio プロトコルは行区切りJSON（JSON Lines）であり、サブプロ
 | 言語 | 状態 |
 | :--- | :--- |
 | Go | 利用可能——[`go/`](go/) を参照 |
-| Python | 予定 |
+| Python | 利用可能——[`python/`](python/) を参照 |
 | TypeScript | 予定 |
 
 ## 接続方法

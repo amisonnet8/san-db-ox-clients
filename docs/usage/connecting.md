@@ -42,6 +42,12 @@ From the Go driver, this child-process launch is just delegated to
 c, err := sandbox.Open(ctx, "bin/san-db-ox", []string{"--serve-stdio"})
 ```
 
+The Python driver's `connect` does the same:
+
+```python
+c = san_db_ox.connect("bin/san-db-ox", ["--serve-stdio"])
+```
+
 ### SSH remote command
 
 Without touching the server side at all, just launching
@@ -61,6 +67,12 @@ its arguments (there's no SSH-specific constructor):
 
 ```go
 c, err := sandbox.Open(ctx, "ssh", []string{"user@host", "san-db-ox", "--serve-stdio"})
+```
+
+Same for the Python driver -- no SSH-specific constructor there either:
+
+```python
+c = san_db_ox.connect("ssh", ["user@host", "san-db-ox", "--serve-stdio"])
 ```
 
 ### SSH forced command (the recommended route)
@@ -105,6 +117,8 @@ installed in the devcontainer; it's brought up by hand with
 - Confirmed the Go driver's `sandbox.Open(ctx, "ssh", []string{...})`
   works over this forced-command path exactly like any other launch
   command (there's no SSH-specific code path).
+- Confirmed the same for the Python driver's `san_db_ox.connect("ssh",
+  [...])`.
 
 **Issue a separate `authorized_keys` entry (a separate key pair) for a
 read-write key versus a read-only key.** Don't give one key both
@@ -120,6 +134,10 @@ docker run -i --rm <image> --serve-stdio
 c, err := sandbox.Open(ctx, "docker", []string{"run", "-i", "--rm", image, "--serve-stdio"})
 ```
 
+```python
+c = san_db_ox.connect("docker", ["run", "-i", "--rm", image, "--serve-stdio"])
+```
+
 ### Kubernetes
 
 ```bash
@@ -128,6 +146,10 @@ kubectl exec -i <pod> -- san-db-ox --serve-stdio
 
 ```go
 c, err := sandbox.Open(ctx, "kubectl", []string{"exec", "-i", pod, "--", "san-db-ox", "--serve-stdio"})
+```
+
+```python
+c = san_db_ox.connect("kubectl", ["exec", "-i", pod, "--", "san-db-ox", "--serve-stdio"])
 ```
 
 ## Over socat (socket)
@@ -164,6 +186,12 @@ socat TCP-LISTEN:5432,fork,bind=127.0.0.1 EXEC:"san-db-ox --read-only --serve-st
 c, err := sandbox.OpenSocket(ctx, "unix", "/tmp/sandbox.sock")
 // or
 c, err := sandbox.OpenSocket(ctx, "tcp", "127.0.0.1:5432")
+```
+
+```python
+c = san_db_ox.connect_unix("/tmp/sandbox.sock")
+# or
+c = san_db_ox.connect_tcp("127.0.0.1", 5432)
 ```
 
 ### TLS/mTLS (client-certificate authentication)
@@ -235,6 +263,25 @@ c, err := sandbox.OpenSocketConn(ctx, nc)
 
 This combination (`tls.Dial` → `OpenSocketConn`) was actually run,
 confirming the hello line and a `query` round-trip.
+
+The Python driver has the same shape: no TLS-specific constructor, just
+`connect_socket` wrapping whatever `ssl.SSLContext.wrap_socket` returns:
+
+```python
+ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+ctx.load_verify_locations("ca.pem")
+ctx.load_cert_chain("client-cert.pem", "client-key.pem")
+
+raw = socket.create_connection(("host", 5432))
+tls_sock = ctx.wrap_socket(raw, server_hostname="sandbox.example.com")
+c = san_db_ox.connect_socket(tls_sock)
+```
+
+This combination was also run against the same socat listener, confirming
+the hello line and a `query` round-trip, and confirming a client
+certificate outside the CA chain gets the same server-side rejection
+(`SSL_accept(): certificate verify failed`) regardless of which driver is
+connecting -- the check happens entirely on socat's side.
 
 ### Restricting source IP addresses
 

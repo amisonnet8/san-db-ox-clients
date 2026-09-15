@@ -7,5 +7,15 @@
 *.test
 *.out
 
+# Python の venv・ビルド・キャッシュ成果物
+/python/.venv/
+/python/dist/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
 *.log
 .DS_Store

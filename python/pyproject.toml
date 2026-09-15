@@ -1,0 +1,64 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "san-db-ox"
+version = "0.1.0"
+description = "Client for SanDBox: connect over its stdio protocol from Python."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [{ name = "amisonnet8" }]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Database",
+    "Typing :: Typed",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/amisonnet8/san-db-ox-clients"
+Source = "https://github.com/amisonnet8/san-db-ox-clients/tree/main/python"
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.11"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/san_db_ox"]
+
+[tool.ruff]
+src = ["src"]
+target-version = "py310"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "A", "SIM", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+# naming.md requires op names to keep their stem across languages ("exec",
+# not "execute"); `exec` shadowing the builtin is the intended name, not an
+# oversight.
+"src/san_db_ox/_client.py" = ["A003"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+files = ["src", "tests", "netcheck.py"]
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+filterwarnings = ["error"]

@@ -29,7 +29,7 @@ Driver version numbers are not tied to the upstream version; the
 | Language | Status |
 | :--- | :--- |
 | Go | available — see [`go/`](go/) |
-| Python | planned |
+| Python | available — see [`python/`](python/) |
 | TypeScript | planned |
 
 ## Connecting

@@ -22,6 +22,10 @@
           {
             "type": "command",
             "command": "jq -r '.tool_input.file_path // .tool_response.filePath // empty' | { read -r f; case \"$f\" in *go/*.go|*go/go.mod|*go/go.sum) cd /workspaces/san-db-ox-clients && make go-build ;; esac; }"
+          },
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // .tool_response.filePath // empty' | { read -r f; case \"$f\" in *python/*.py|*python/pyproject.toml) cd /workspaces/san-db-ox-clients && make python-lint && make python-typecheck ;; esac; }"
           }
         ]
       }

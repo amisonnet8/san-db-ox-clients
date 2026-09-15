@@ -5,7 +5,13 @@
     // Official devcontainers features only (ghcr.io/devcontainers/features/*)
     // -- no community/third-party features. Add one line here per language
     // as drivers are added (.claude/rules/directory-structure.md).
-    "ghcr.io/devcontainers/features/go:1": {}
+    "ghcr.io/devcontainers/features/go:1": {},
+    // installTools left at its default (true) but only pulls tooling
+    // pipx-installs (not used here) -- dev tools (pytest/ruff/mypy) live
+    // in python/.venv via `make python-venv`, not globally.
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.11"
+    }
   },
   "customizations": {
     "vscode": {
@@ -13,12 +19,15 @@
         "golang.Go",
         "ms-vscode.makefile-tools",
         "github.vscode-github-actions",
-        "timonwong.shellcheck"
+        "timonwong.shellcheck",
+        "ms-python.python",
+        "charliermarsh.ruff"
       ],
       "settings": {
         "go.useLanguageServer": true,
         "editor.formatOnSave": true,
-        "go.formatTool": "goimports"
+        "go.formatTool": "goimports",
+        "python.defaultInterpreterPath": "${workspaceFolder}/python/.venv/bin/python"
       }
     }
   },

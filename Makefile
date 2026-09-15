@@ -1,4 +1,5 @@
-.PHONY: shellcheck trivy fetch go-build go-vet go-test go-netcheck test-docs
+.PHONY: shellcheck trivy fetch go-build go-vet go-test go-netcheck test-docs \
+	python-venv python-lint python-typecheck python-netcheck python-test
 
 # ShellCheck every tracked shell script. git ls-files enumerates them so a
 # new script needs no Makefile change (mirrors san-db-ox's own `make
@@ -66,3 +67,42 @@ go-netcheck:
 		echo "$$bad"; \
 		exit 1; \
 	fi
+
+# Python targets are prefixed python- (.claude/rules/directory-structure.md,
+# same reasoning as go-: language directories don't depend on each other).
+# All of them depend on a venv holding the dev extras (pytest/ruff/mypy) --
+# runtime dependencies are zero, matching the Go driver.
+
+PYTHON ?= python3
+PY_VENV := python/.venv
+PY := $(PY_VENV)/bin/python
+
+python-venv: $(PY_VENV)/pyvenv.cfg
+
+$(PY_VENV)/pyvenv.cfg: python/pyproject.toml
+	$(PYTHON) -m venv $(PY_VENV)
+	$(PY) -m pip install --upgrade pip
+	$(PY) -m pip install -e './python[dev]'
+	@touch $@
+
+python-lint: python-venv
+	$(PY) -m ruff check python
+	$(PY) -m ruff format --check python
+
+python-typecheck: python-venv
+	$(PY) -m mypy --config-file python/pyproject.toml python/src python/tests python/netcheck.py
+
+# Same idea as go-netcheck, but the naive `python -c "import san_db_ox._codec"`
+# doesn't work here: importing the _codec submodule first runs the package's
+# __init__.py, which re-exports the client and pulls in subprocess/socket
+# transitively. netcheck.py loads _codec.py in isolation (without running
+# __init__.py) to sidestep that, then checks sys.modules for anything
+# network- or process-related (.claude/rules/architecture.md).
+python-netcheck: python-venv
+	$(PY) python/netcheck.py
+
+# fetch dependency mirrors go-test: individual tests skip (not fail) when no
+# san-db-ox binary is found (.claude/rules/testing.md), so python-test still
+# works if fetch is skipped and SAN_DB_OX_BIN is set instead.
+python-test: fetch python-venv
+	$(PY) -m pytest python/tests
