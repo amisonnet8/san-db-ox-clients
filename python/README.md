@@ -6,11 +6,11 @@ to a running `san-db-ox --serve-stdio` process, either as a child process
 `socat`.
 
 ```
-pip install san-db-ox
+pip install san-db-ox-client
 ```
 
-(the distribution name is `san-db-ox`; the importable module is `san_db_ox`,
-since Python identifiers can't contain hyphens)
+(the distribution name is `san-db-ox-client`; the importable module is
+`san_db_ox`, since Python identifiers can't contain hyphens)
 
 | | |
 | :--- | :--- |

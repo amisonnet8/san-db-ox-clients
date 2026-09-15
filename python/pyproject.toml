@@ -1,9 +1,20 @@
 [build-system]
-requires = ["hatchling"]
+# hatchling>=1.32 emits Metadata-Version 2.5, which PyPI/TestPyPI's
+# Warehouse currently rejects at upload with a bare "400 Bad Request"
+# (confirmed by bisecting: 1.31.0 emits 2.4 and uploads fine, 1.32.0
+# emits 2.5). Pin below that until Warehouse supports 2.5.
+requires = ["hatchling<1.32"]
 build-backend = "hatchling.build"
 
 [project]
-name = "san-db-ox"
+# Not "san-db-ox": PyPI's typosquat-prevention name check strips
+# punctuation before comparing, so "san-db-ox" normalizes to "sandbox",
+# which already exists (confirmed by an upload rejection: "The name
+# 'san-db-ox' is too similar to an existing project"). "san-db-ox-client"
+# normalizes to "sandboxclient", clear of that collision. The import name
+# (san_db_ox) is unaffected -- distribution name and import name are
+# independent.
+name = "san-db-ox-client"
 version = "0.1.0"
 description = "Client for SanDBox: connect over its stdio protocol from Python."
 readme = "README.md"

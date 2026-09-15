@@ -255,10 +255,11 @@ Go ドライバをリファレンス実装として、`python/` 配下に Python
 新規作成した。**外部依存ゼロ**（標準ライブラリのみ）。
 
 - **確定した方針**（ユーザー承認、2026-09-15）: 同期 API のみ（asyncio
-  版は作らない）／PyPI 配布名 `san-db-ox`・import 名 `san_db_ox`
-  （どちらも PyPI 未登録であることを事前に確認）／最低 Python
+  版は作らない）／import 名 `san_db_ox`／最低 Python
   3.10／標準 `venv` + `pip`（uv は使わない）／開発依存は
   pytest・ruff・mypy のみ。
+- **PyPI 配布名は当初案 `san-db-ox` から `san-db-ox-client` に変更した
+  （公開時に判明、後述）。**
 - **`python/src/san_db_ox/`** — `naming.md` の表に追記した構成
   （`_codec.py`・`_transport.py`・`_client.py`・`__init__.py`・
   `py.typed`）。
@@ -370,11 +371,45 @@ Go ドライバをリファレンス実装として、`python/` 配下に Python
 
 **この作業でやらなかったこと**: `python/` の日本語 README（`go/README.md`
 と同じく英語のみ、日英順序ルールの対象外——ルート README とは異なり言語
-ディレクトリ配下の README は元から英語のみの方針）、PyPI への実際の
-公開（アカウント・トークンが要るためユーザー作業として別途）、
+ディレクトリ配下の README は元から英語のみの方針）、
 `devcontainer-lock.json` の再生成（`devcontainer` CLI が無く手動更新は
 ハッシュを捏造することになるため、次回実際にコンテナをリビルドする
 タイミングで自動生成させる）。
+
+### PyPI への公開（フェーズ⑥の続き、ユーザー作業）で判明した2点
+
+公開作業はユーザー自身が `python -m build` / `twine upload` で実施。
+その過程で、実装時には想定していなかった問題が2つ見つかり、両方とも
+このリポジトリ側の設定で解消した。
+
+- **`hatchling>=1.32` は `Metadata-Version: 2.5` を出力し、PyPI/TestPyPI
+  （Warehouse）がこれを `400 Bad Request` で拒否する。** バイナリサーチで
+  特定（`1.31.0` は `2.4` を出力しアップロード可、`1.32.0` から `2.5` に
+  変わる）。`python/pyproject.toml` の `[build-system] requires` を
+  `hatchling<1.32` に固定して解消。Warehouse が `2.5` に対応した時点で
+  この上限は見直すこと。
+- **配布名 `san-db-ox` は PyPI に登録できない。** PyPI のタイポスクワッ
+  ティング対策（記号を除去して既存プロジェクト名と比較する）により、
+  `san-db-ox` は記号を除くと `sandbox` と完全一致し、これは既存の別
+  プロジェクトのため `"The name 'san-db-ox' is too similar to an
+  existing project"` として拒否される（TestPyPI・本番PyPI 両方で再現）。
+  **配布名を `san-db-ox-client` に変更して解消**（`sandboxclient` は
+  衝突しない）。**import 名 `san_db_ox` は変更していない**——PyPI の
+  配布名と import 名は独立しているため、`pip install san-db-ox-client`
+  → `import san_db_ox` という形になる。`python/pyproject.toml`・
+  `python/README.md`・`naming.md` を修正済み。
+  - **教訓**（今後 PyPI に配布名を登録する全言語で踏む可能性がある）:
+    候補名の**完全一致**が PyPI 未登録であることの確認だけでは不十分。
+    **記号を除去した形**（ハイフン・アンダースコア・ピリオドを取り除いた
+    小文字列）が既存プロジェクトと衝突しないかも確認すること。
+    `naming.md` の製品名3段階表記で `sandbox` を意図的に避けている
+    まさにその理由（一般名詞との衝突）が、記号除去後の比較という形で
+    そのまま踏み抜かれた形。TypeScript（npm）でも同様の配布名確認時に
+    この観点を忘れないこと。
+
+**公開結果**: https://pypi.org/project/san-db-ox-client/ （`0.1.0`、
+`san_db_ox_client-0.1.0-py3-none-any.whl` / `.tar.gz`）。
+`pip install san-db-ox-client` で導入し `import san_db_ox` で使う。
 
 **次はフェーズ⑦（TypeScript）。**
 
