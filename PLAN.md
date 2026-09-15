@@ -33,6 +33,16 @@ stdio結合、SQL学習サンドボックス）を軸に検討した結果:
 
 **フェーズ①〜⑥完了。フェーズ⑦（TypeScript）着手前。**
 
+### 公開ページ一覧
+
+各言語のパッケージレジストリ上の公開ページ（実機で200応答を確認済み、
+2026-09-15）。
+
+| 言語 | 公開ページ |
+| :--- | :--- |
+| Go | https://pkg.go.dev/github.com/amisonnet8/san-db-ox-clients/go/sandbox |
+| Python | https://pypi.org/project/san-db-ox-client/ |
+
 ### 開発の進め方（フェーズ⑥で確定した方針）
 
 新しい言語ドライバへの展開は「①計画→②実装（一気に実施）→③配布・公開
