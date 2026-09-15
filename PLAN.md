@@ -43,6 +43,15 @@ stdio結合、SQL学習サンドボックス）を軸に検討した結果:
 | :--- | :--- |
 | Go | https://pkg.go.dev/github.com/amisonnet8/san-db-ox-clients/go/sandbox |
 | Python | https://pypi.org/project/san-db-ox-client/ |
+| TypeScript | https://www.npmjs.com/package/@amisonnet8/san-db-ox-client |
+
+TypeScript の公開（2026-09-15）: `npm publish --access public` で
+`@amisonnet8/san-db-ox-client@0.1.0` を公開。npm の Granular Access
+Token 発行時、**「Bypass two-factor authentication」チェックボックス
+（デフォルトでオフ）を入れ忘れると `403 Forbidden` になる**点で詰まった
+（教訓として記録）。公開直後、レジストリの一部 CDN エッジで数分間
+`404` が返るキャッシュ遅延も観測されたが、実体の公開自体は成功していた
+（`npm publish` の応答・確認メール・別エッジからの直接確認で確定）。
 
 ### 開発の進め方（フェーズ⑥で確定した方針）
 
@@ -590,9 +599,10 @@ TypeScript の行を追加（タグ規則 `typescript/vX.Y.Z`）。
   `san-db-ox-client` に確定。npm 側: スコープ付き名
   `@amisonnet8/san-db-ox-client` を採用したことで、PyPI で踏んだ
   「記号除去後の正規化による衝突」という問題圏自体に入らない設計にした
-  （`naming.md`・`distribution.md` 反映済み）。`amisonnet8` スコープの
-  存在確認と初回 `npm publish --access public` の実行は③配布フェーズ
-  （ユーザー作業）で行う。
+  （`naming.md`・`distribution.md` 反映済み）。`amisonnet8` スコープは
+  問題なく取得済みで、③配布フェーズ（ユーザー作業）として
+  `npm publish --access public` を実施し `@amisonnet8/san-db-ox-client@0.1.0`
+  を公開済み（詳細は「公開ページ一覧」直下参照）。
 - **devcontainer.json 反映待ちリスト**: 現行コンテナはリビルドせずに
   開発を進める方針（都度手動でインストール・設定して進め、区切りでまとめて
   `devcontainer.json` へ反映する）。session内で手動インストール・設定を
