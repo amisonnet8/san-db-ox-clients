@@ -46,6 +46,7 @@ stdio結合、SQL学習サンドボックス）を軸に検討した結果:
 | Go | https://pkg.go.dev/github.com/amisonnet8/san-db-ox-clients/go/sandbox |
 | Python | https://pypi.org/project/san-db-ox-client/ |
 | TypeScript | https://www.npmjs.com/package/@amisonnet8/san-db-ox-client |
+| Rust | https://crates.io/crates/san-db-ox-client |
 
 TypeScript の公開（2026-09-15）: `npm publish --access public` で
 `@amisonnet8/san-db-ox-client@0.1.0` を公開。npm の Granular Access
@@ -55,9 +56,12 @@ Token 発行時、**「Bypass two-factor authentication」チェックボック�
 `404` が返るキャッシュ遅延も観測されたが、実体の公開自体は成功していた
 （`npm publish` の応答・確認メール・別エッジからの直接確認で確定）。
 
-Rust（crates.io）はフェーズ⑧のこの時点では未公開——③配布フェーズは
-ユーザー作業として後続（`san-db-ox-client` が crates.io 上で未登録で
-あることは実機確認済み、`.claude/rules/distribution.md` 参照）。
+Rust の公開（2026-09-15）: `cargo login` でトークンを設定した後
+`cargo publish`（事前に `cargo publish --dry-run` でパッケージング内容
+（28ファイル、165.8KiB/圧縮45.8KiB）とビルド・検証を確認済み）で
+`san-db-ox-client@0.1.0` を公開。npm・PyPI のような2FA・スコープ関連の
+詰まりどころは無く、一度で成功した。crates.io API
+（`https://crates.io/api/v1/crates/san-db-ox-client`）で実機確認済み。
 
 ### 開発の進め方（フェーズ⑥で確定した方針）
 
@@ -714,14 +718,16 @@ clippy/rustfmt 込み）と `rust-lang.rust-analyzer` 拡張・
 `rust-analyzer.linkedProjects` 設定を追加（下記「devcontainer.json
 反映待ちリスト」参照）。
 
-**この作業でやらなかったこと**: crates.io への実際の publish（③配布・
-公開はスコープ外、ユーザー作業として後続——PyPI・npm と同じ進め方）。
-
 `.claude/settings.json` の `PostToolUse` フックへの Rust 用分岐追加は
 提案してユーザー承認を得て適用済み（`*rust/*.rs`・`*rust/Cargo.toml`
 編集後に `make rust-build` を自動実行。Go の `go-build` と同じパターン。
 シミュレーションで実際に発火することと、無関係なファイルでは発火しない
 ことの両方を確認済み）。
+
+crates.io への publish（③配布・公開、ユーザー作業）も完了した
+（`cargo login` → `cargo publish`。詳細は「公開ページ一覧」直下参照）。
+これでフェーズ⑧（Rustドライバ）が完全に完了し、Go・Python・TypeScript・
+Rust の4言語すべてが実装・公開済みになった。
 
 **次はフェーズ⑨（5番目の言語）——需要を見て検討する。**
 
