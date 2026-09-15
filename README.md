@@ -31,6 +31,7 @@ Driver version numbers are not tied to the upstream version; the
 | Go | available — see [`go/`](go/) |
 | Python | available — see [`python/`](python/) |
 | TypeScript | available — see [`typescript/`](typescript/) |
+| Rust | available — see [`rust/`](rust/) |
 
 ## Connecting
 

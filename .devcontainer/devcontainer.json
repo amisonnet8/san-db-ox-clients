@@ -16,6 +16,13 @@
     // access, JSON.rawJSON); bookworm's apt nodejs is 18.x, too old.
     "ghcr.io/devcontainers/features/node:1": {
       "version": "22"
+    },
+    // Rust driver requires 1.85 (edition 2024); bookworm's apt rustc is
+    // 1.63, far too old. profile "default" is what brings clippy and
+    // rustfmt -- the feature's own default profile is "minimal", which has
+    // neither.
+    "ghcr.io/devcontainers/features/rust:1": {
+      "profile": "default"
     }
   },
   "customizations": {
@@ -27,13 +34,18 @@
         "timonwong.shellcheck",
         "ms-python.python",
         "charliermarsh.ruff",
-        "biomejs.biome"
+        "biomejs.biome",
+        "rust-lang.rust-analyzer"
       ],
       "settings": {
         "go.useLanguageServer": true,
         "editor.formatOnSave": true,
         "go.formatTool": "goimports",
-        "python.defaultInterpreterPath": "${workspaceFolder}/python/.venv/bin/python"
+        "python.defaultInterpreterPath": "${workspaceFolder}/python/.venv/bin/python",
+        "rust-analyzer.linkedProjects": ["rust/Cargo.toml"],
+        "[rust]": {
+          "editor.defaultFormatter": "rust-lang.rust-analyzer"
+        }
       }
     }
   },

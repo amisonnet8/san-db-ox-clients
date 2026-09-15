@@ -103,3 +103,32 @@ jobs:
       - run: make typescript-typecheck
       - run: make typescript-netcheck
       - run: make typescript-test
+
+  # ubuntu-latest 限定（go/python/typescript ジョブと同じ理由）。バージョンは
+  # マトリクスにする -- Cargo.toml の rust-version(MSRV) は宣言でしかなく、
+  # cargo 自身がその下限で実際にビルドを検証してくれるわけではないため、
+  # 宣言した下限(1.85)と stable の両方を実際に走らせて初めて保証される。
+  # python の requires-python / typescript の engines マトリクスと同じ論拠。
+  #
+  # ツールチェーンの導入にサードパーティ製アクション（dtolnay/rust-toolchain
+  # 等）は使わない。ubuntu-latest ランナーには rustup がプリインストール
+  # されており、rustup の2行で足りる。devcontainer.json が「公式 features
+  # のみ、コミュニティ製は使わない」としている方針と同じ線引き（既存ジョブの
+  # サードパーティは trivy-action 1つだけで、これは本体 CI と揃えるという
+  # 明示的な理由がある）。依存ゼロなのでキャッシュ対象も target/ しか無く、
+  # この規模では割に合わないため設定しない。
+  rust:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        rust-version: ["1.85", "stable"]
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup toolchain install ${{ matrix.rust-version }} --profile minimal --component clippy --component rustfmt
+      - run: rustup default ${{ matrix.rust-version }}
+      - run: make rust-build
+      - run: make rust-fmt
+      - run: make rust-lint
+      - run: make rust-netcheck
+      - run: make rust-test

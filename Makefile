@@ -1,7 +1,8 @@
 .PHONY: shellcheck trivy fetch go-build go-vet go-test go-netcheck test-docs \
 	python-venv python-lint python-typecheck python-netcheck python-test \
 	typescript-deps typescript-build typescript-build-test typescript-lint \
-	typescript-typecheck typescript-netcheck typescript-test
+	typescript-typecheck typescript-netcheck typescript-test \
+	rust-build rust-fmt rust-lint rust-netcheck rust-test
 
 # ShellCheck every tracked shell script. git ls-files enumerates them so a
 # new script needs no Makefile change (mirrors san-db-ox's own `make
@@ -160,3 +161,44 @@ typescript-netcheck: typescript-build
 # equivalent _conformance_support.py.
 typescript-test: fetch typescript-build-test
 	cd $(TS_DIR) && node --test 'build-test/test/**/*.test.js'
+
+# Rust targets are prefixed rust- (.claude/rules/directory-structure.md,
+# same reasoning as go-/python-/typescript-). Runtime dependencies are
+# zero, matching all three: no serde, no serde_json, no base64 crate --
+# the JSON codec and Base64 are hand-written. There are no
+# dev-dependencies either, so unlike python-venv/typescript-deps there is
+# no install step and no stamp file: cargo's own incremental build in
+# rust/target/ is the whole story.
+
+CARGO ?= cargo
+RUST_DIR := rust
+
+rust-build:
+	cd $(RUST_DIR) && $(CARGO) build --all-targets
+
+rust-fmt:
+	cd $(RUST_DIR) && $(CARGO) fmt --check
+
+rust-lint:
+	cd $(RUST_DIR) && $(CARGO) clippy --all-targets -- -D warnings
+
+# Same idea as go-netcheck/python-netcheck/typescript-netcheck
+# (.claude/rules/architecture.md): confirms src/codec/ stays free of
+# std::net/std::process/std::fs/std::io/std::thread, by a forbidden-prefix
+# scan plus a positive control that proves the scanner itself still works
+# (run against src/transport/direct.rs, which must produce a hit -- the
+# same idea as typescript-netcheck's node:net control). No san-db-ox
+# binary needed, hence no fetch dependency.
+rust-netcheck:
+	cd $(RUST_DIR) && $(CARGO) test --test netcheck -- --nocapture
+
+# fetch dependency mirrors go-test/python-test/typescript-test: individual
+# tests skip (not fail) when no san-db-ox binary is found
+# (.claude/rules/testing.md).
+# The second command is not redundant: `cargo test --all-targets` silently
+# SKIPS doctests, and the doctests are what enforce that overwrite/
+# exit_code are compile errors on SocketClient (this driver's equivalent
+# of TypeScript's `// @ts-expect-error` assertions).
+rust-test: fetch
+	cd $(RUST_DIR) && $(CARGO) test --all-targets
+	cd $(RUST_DIR) && $(CARGO) test --doc

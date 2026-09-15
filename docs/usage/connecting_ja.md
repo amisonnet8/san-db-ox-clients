@@ -52,6 +52,12 @@ TypeScript ドライバの `connect` も同様。
 const c = await connect("bin/san-db-ox", ["--serve-stdio"]);
 ```
 
+Rust ドライバの `connect` も同様。
+
+```rust
+let mut c = san_db_ox_client::connect("bin/san-db-ox", &["--serve-stdio"])?;
+```
+
 ### SSH リモートコマンド直結
 
 サーバ側に手を加えず、単に `ssh` 経由で `san-db-ox --serve-stdio` を
@@ -82,6 +88,12 @@ TypeScript ドライバも同様。
 
 ```typescript
 const c = await connect("ssh", ["user@host", "san-db-ox", "--serve-stdio"]);
+```
+
+Rust ドライバも同様。
+
+```rust
+let mut c = san_db_ox_client::connect("ssh", &["user@host", "san-db-ox", "--serve-stdio"])?;
 ```
 
 ### SSH forced command（推奨経路）
@@ -131,6 +143,10 @@ devcontainer に導入済み。テストのたびに `sudo /usr/sbin/sshd -p <po
   forced command だけが実行されること、forced command の `--read-only`
   が実際に効いていること（`snapshot()` が `read_only` コードで拒否
   される）の両方を確認した。
+- Rust ドライバの `connect("ssh", &[...])` についても、hello 行・
+  `query` の往復が正しく返ることと、forced command の `--read-only` が
+  実際に効いていること（`snapshot()` が `read_only` コードで拒否
+  される）を確認した。
 
 **読み書き両方を許す鍵と読み取り専用の鍵は、`authorized_keys` の別エントリ
 （別の鍵ペア）として分けて発行すること。** 1つの鍵に両方の権限を持たせて
@@ -154,6 +170,10 @@ c = san_db_ox.connect("docker", ["run", "-i", "--rm", image, "--serve-stdio"])
 const c = await connect("docker", ["run", "-i", "--rm", image, "--serve-stdio"]);
 ```
 
+```rust
+let mut c = san_db_ox_client::connect("docker", &["run", "-i", "--rm", image, "--serve-stdio"])?;
+```
+
 ### Kubernetes
 
 ```bash
@@ -172,6 +192,10 @@ c = san_db_ox.connect("kubectl", ["exec", "-i", pod, "--", "san-db-ox", "--serve
 const c = await connect("kubectl", ["exec", "-i", pod, "--", "san-db-ox", "--serve-stdio"]);
 ```
 
+```rust
+let mut c = san_db_ox_client::connect("kubectl", &["exec", "-i", pod, "--", "san-db-ox", "--serve-stdio"])?;
+```
+
 ## socat 経由（ソケット）
 
 socat を挟むと、直結では出せない TCP/UNIX ソケットとしてクライアントに
@@ -187,7 +211,9 @@ socat を挟むと、直結では出せない TCP/UNIX ソケットとしてク�
 **自身の実行ファイルを上書きする `overwrite` op は socat 経由では
 使わない。** 複数の子プロセスが同じ実行ファイルパスへ同時に書きに行く
 リスクがあるため（Go ドライバでは、そもそも `*SocketClient` に
-`Overwrite` メソッド自体が無く、型の時点で呼べない）。
+`Overwrite` メソッド自体が無く、型の時点で呼べない。Rust ドライバの
+`SocketClient` にも `overwrite` メソッドは無く、同じ理由でコンパイル
+エラーになる）。
 
 ### 素の TCP/UNIX ソケット
 
@@ -215,6 +241,12 @@ c = san_db_ox.connect_tcp("127.0.0.1", 5432)
 const c = await connectUnix("/tmp/sandbox.sock");
 // または
 const c2 = await connectTcp("127.0.0.1", 5432);
+```
+
+```rust
+let mut c = san_db_ox_client::connect_unix("/tmp/sandbox.sock")?;
+// または
+let mut c2 = san_db_ox_client::connect_tcp(("127.0.0.1", 5432))?;
 ```
 
 ### TLS/mTLS（クライアント証明書による認証）
@@ -326,6 +358,47 @@ const c = await connectSocket(socket);
 証明書が同じく `SSL_accept(): certificate verify failed` でサーバ側から
 拒否されることの両方を確認済み——この検証は socat 側だけで完結している
 ため、他の2言語と同じ結果になるのは偶然ではなく想定どおり。
+
+Rust の標準ライブラリには TLS が一切無いため、このドライバは TLS の型を
+名指しすることすらできない。継ぎ目は他の3言語と同じ形——`connect_socket`
+が `Read + Write` を実装する何でも受け取るので、呼び出し側が
+`rustls`（下記の例）や `native-tls` を持ち込めばよく、このクレート自体は
+どちらにも依存しない。
+
+```rust
+// rustls とその証明書ローダは呼び出し側の依存物。このドライバは TLS
+// クレートに一切依存せず、TLS 専用のコンストラクタも持たない
+// —— Read + Write を実装するものであれば何でもよい。
+let tcp = std::net::TcpStream::connect("host:5432")?;
+// 必須: connect_socket は任意のストリームに対して自分でこれを設定
+// できないため、これが以降のすべての読み取りを束縛する
+// （rustls/native-tls の read は下位ソケットへ委譲される）。
+tcp.set_read_timeout(Some(std::time::Duration::from_secs(30)))?;
+
+let mut roots = rustls::RootCertStore::empty();
+roots.add_parsable_certificates(load_certs("ca.pem")?);
+let config = rustls::ClientConfig::builder()
+    .with_root_certificates(roots)
+    .with_client_auth_cert(load_certs("client-cert.pem")?, load_key("client-key.pem")?)?;
+let conn = rustls::ClientConnection::new(
+    std::sync::Arc::new(config),
+    "sandbox.example.com".try_into()?, // サーバ証明書の SAN と一致させる
+)?;
+
+let mut c = san_db_ox_client::connect_socket(
+    rustls::StreamOwned::new(conn, tcp),
+    SocketOptions::new(),
+)?;
+```
+
+この組み合わせ（`rustls::StreamOwned` → `connect_socket`）も同じ socat
+待受に対して実際に動かし、hello 行・`query` の往復と、CA チェーン外の
+クライアント証明書が他の3言語と同じく `SSL_accept(): certificate verify
+failed` でサーバ側から拒否されることを確認した。加えて、TLS でラップする
+前の `TcpStream` に設定した read timeout が、TLS 越しのドライバの読み取り
+を実際に束縛することも確認した——これは Rust に固有の主張であるため、
+仮定せず実測した（`TcpStream` に 200ms を設定し、わざと遅いクエリに対して
+約255msで `Error::Timeout` が返ることを確認）。
 
 ### 接続元IP アドレスの制限
 

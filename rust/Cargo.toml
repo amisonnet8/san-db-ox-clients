@@ -1,0 +1,20 @@
+[package]
+name = "san-db-ox-client"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Client for SanDBox: connect over its stdio protocol from Rust."
+license = "MIT"
+repository = "https://github.com/amisonnet8/san-db-ox-clients"
+readme = "README.md"
+keywords = ["database", "sqlite", "client", "stdio", "database-testing"]
+categories = ["database"]
+
+# Runtime dependencies: none. The JSON codec and Base64 are hand-written
+# (rust/src/codec/) to keep this property, matching the Go/Python/TypeScript
+# drivers in this repository. There are no dev-dependencies either.
+[dependencies]
+
+[lib]
+name = "san_db_ox_client"
+path = "src/lib.rs"

@@ -11,8 +11,9 @@
 5. **⑤ドキュメント・配布**: 完了。
 6. **⑥ Python ドライバ**: 完了。
 7. **⑦ TypeScript ドライバ**: 完了。
-8. **⑧以降 他言語への展開【現在地】**: 需要を見て
-   Rust / JVM(Java・Kotlin) / Ruby / C#(.NET) / PHP / C から検討する。
+8. **⑧ Rust ドライバ**: 完了。
+9. **⑨以降 他言語への展開【現在地】**: 需要を見て
+   JVM(Java・Kotlin) / Ruby / C#(.NET) / PHP / C から検討する。
 
 ## 言語の優先順位の根拠
 
@@ -28,11 +29,12 @@ stdio結合、SQL学習サンドボックス）を軸に検討した結果:
 
 この3言語で「CI/CD と結合テスト」という主要ユースケースの大部分をカバー
 できるため、初期スコープとする。4番目以降（Rust/JVM/Ruby/C#/PHP/C）は
-需要を見ながら追加を検討する。
+需要を見ながら追加を検討する。Rust はフェーズ⑧としてユーザー指定で
+先に着手した（2026-09-15）。
 
 ## 現在地
 
-**フェーズ①〜⑦完了。フェーズ⑧（4番目の言語）着手前——需要を見て検討する。**
+**フェーズ①〜⑧完了。フェーズ⑨（5番目の言語）着手前——需要を見て検討する。**
 
 ### 公開ページ一覧
 
@@ -53,11 +55,15 @@ Token 発行時、**「Bypass two-factor authentication」チェックボック�
 `404` が返るキャッシュ遅延も観測されたが、実体の公開自体は成功していた
 （`npm publish` の応答・確認メール・別エッジからの直接確認で確定）。
 
+Rust（crates.io）はフェーズ⑧のこの時点では未公開——③配布フェーズは
+ユーザー作業として後続（`san-db-ox-client` が crates.io 上で未登録で
+あることは実機確認済み、`.claude/rules/distribution.md` 参照）。
+
 ### 開発の進め方（フェーズ⑥で確定した方針）
 
 新しい言語ドライバへの展開は「①計画→②実装（一気に実施）→③配布・公開
 （ユーザー作業を含むことがある）」の3段階で進める（ユーザー指定、
-2026-09-15）。フェーズ⑦以降もこれに従う。
+2026-09-15）。フェーズ⑦・⑧以降もこれに従う。
 
 ### フェーズ①・②の要約
 
@@ -558,7 +564,165 @@ TypeScript の行を追加（タグ規則 `typescript/vX.Y.Z`）。
 シミュレーションで実際に発火することと、無関係なファイルでは発火しない
 ことの両方を確認済み）。
 
-**次はフェーズ⑧（4番目の言語）——需要を見て検討する。**
+### フェーズ⑧（Rust ドライバ）で行ったこと
+
+ユーザー指定で4番目の言語に Rust を採用（「次はRust対応をお願いします」、
+2026-09-15）。Go/Python/TypeScript と決定的に違う点が1つ——**標準
+ライブラリに JSON が無い**。既存3言語が `encoding/json`+`json.Number`・
+`json`+`parse_int`・`JSON.parse` reviver+`JSON.rawJSON` で無償に得ていた
+「64bit整数と REAL の数値トークン忠実性」を自前設計する必要があった。
+
+**確定した方針**（ユーザー確定、再検討しない）:
+- crates.io パッケージ名 `san-db-ox-client`（未登録を実機確認済み。
+  `serde` を陽性対照にして404が本物であることまで確認）。
+- **JSON・Base64 とも自前実装、実行時依存ゼロ**（serde/serde_json/base64
+  いずれも使わない）。既存3言語の「Runtime dependencies: none」を保つ。
+- **同期のみ**（`std::process`/`std::net`/`std::os::unix::net` のみ。
+  tokio 等の非同期ランタイムは持ち込まない）。
+- `edition = "2024"`、MSRV `1.85`。CI マトリクスは `["1.85","stable"]`。
+
+**数値の忠実性**: 自前 JSON パーサが数値トークンを `NumberToken(String)`
+として原文のまま保持する設計にしたことで、他3言語が標準ライブラリの
+フックで得ていた性質を最初から持つ。`.`/`e`/`E` を含めば REAL(`f64`)、
+含まなければ INTEGER(`i64`)、範囲外は `Error::Protocol`
+（Go の `ParseInt` 失敗に相当）。送出側の `real_token()` は Rust の
+`{:?}`（Debug）が常に `.` か指数を持つ性質を使い、Go の `formatReal`・
+TypeScript の `realToken` に相当するガードを実装（`88.0`→`"88.0"`、
+`-0.0`→`"-0.0"`、TypeScript が要した `Object.is(v,-0)` 特別扱いは不要）。
+Rust の `f64::from_str` は範囲外を `±inf` へ飽和するだけで Go のような
+`ErrRange` 同時返却が無いため、その簡略化を単体テストで固定した。
+
+**トランスポート**: `std` にはパイプの読み取りタイムアウトが無いため、
+直結（`DirectTransport`）は読み取りスレッド＋`sync_channel(1)` 方式
+（Python の `Queue(maxsize=1)`・TypeScript の1スロット pause/resume の
+直訳）。ソケット（`SocketTransport`）はスレッド無しのインライン framer
+方式に変更——決め手は TLS の継ぎ目で、同期 Rust の TLS ストリーム
+（`rustls::StreamOwned` 等）は split も `try_clone` もできないため、
+スレッド化すると継ぎ目が `Arc<Mutex<S>>`（デッドロックする）か
+`from_halves`（TLS で使えず継ぎ目の意味が消える）のどちらかに潰れる。
+`std` には SIGTERM を送る手段が無い（`Child::kill()` は SIGKILL のみ）
+ため、`kill(2)` シンボルを自前宣言する10行の `unsafe`（クレート内で
+ここ1箇所、`#![deny(unsafe_code)]`＋codec は `#![forbid(unsafe_code)]`
+で他を封じる）で段階的 close（stdin close→SIGTERM→SIGKILL）を実装。
+`Child::wait()` にもタイムアウトが無いため `try_wait()` のポーリングで
+束縛した（待機スレッド方式だと pid 再利用と `kill` が競合しうるため）。
+
+**呼び出しの直列化**: 他3言語がロック／promiseチェーンで実現していた
+直列化が、Rust では全メソッドを `&mut self` にするだけでコンパイル時
+保証になった（`&mut Client` を2つ同時に持てない）。副作用として
+`Client`/`SocketClient` は `mpsc::Receiver` を含むため自動的に
+`Send + !Sync` になり、他3言語が散文で書いていた「並行利用は安全でない」
+をコンパイラが強制する形になった。
+
+**netcheck**: Rust には std のモジュール単位の依存グラフが無い（std は
+常にリンクされる）ため、`tests/netcheck.rs` に自前の静的スキャナを実装
+——コメント除去後に `use` パスの展開（グループ化された import の
+評価漏れを防ぐ）＋全文の禁止プレフィックス検索の二重チェック、
+そして TypeScript の `node:net` 陽性対照と同じ発想で
+`src/transport/direct.rs` に対する陽性対照（禁止パスが1件以上検出
+されなければ失格）を実装した。`#![no_std]` ワークスペースメンバで
+コンパイラに強制させる代案も検討したが、ルールが求めるのは「ネット
+ワーク／プロセス禁止」であって「std 禁止」ではないこと、codec の全行が
+`alloc::` 系の綴りを強いられる恒久的な摩擦になることから見送った。
+
+**直結専用APIの型分離**: `overwrite()`/`exit_code()` を `Client` にだけ
+置き `SocketClient` には存在させない設計自体は Go と同じだが、それが
+壊れていないことの検証に TypeScript の `// @ts-expect-error` に相当する
+`compile_fail` doctest を採用（rustdoc に「この例は意図的にコンパイル
+できません」と**表示される**ため不可視な `@ts-expect-error` より優れる）。
+CI マトリクス（1.85/stable）間で診断文言が割れるため `trybuild` は
+不採用。`compile_fail` 自体が無関係なタイプミスでも通ってしまう弱点への
+対策として、禁止要素1つだけが違う「通るはずの」対照ブロックを対で
+用意した（`SocketClient::overwrite`・`SocketClient::exit_code`・
+`Value::from(true)` の3対）。`cargo test --all-targets` は doctest を
+黙って skip するため、`make rust-test` は `cargo test --doc` を
+別ステップで必ず実行する。
+
+**実装中に踏んだ罠（2件）**:
+1. **`Session::close()` が close 応答を読み捨てていたことによる
+   デッドロック**: `close` op を送るだけで応答を読まずに
+   `transport.close()` を呼んでいたところ、直結トランスポートの読み取り
+   スレッドが「誰も受け取らない応答行」を1スロットの `sync_channel` へ
+   `send()` しようとして永久ブロックした。さらに `ThreadedReader::join()`
+   の実装が、期限付きの busy-wait がタイムアウトした後も無条件で
+   `h.join()`（無期限）してしまうバグと重なり、テストが数十秒単位で
+   ハングした。修正は2箇所——(a) `Session::close()` で close 応答を
+   実際に読み捨てる（これによりスレッドが正常に EOF まで進んで自力で
+   終了する）、(b) `ThreadedReader::join()` は期限超過後は `h.join()`
+   せず諦める（`Receiver` が直後に drop されることで送信側が
+   disconnect エラーで解放される——Python の daemon スレッド＋
+   `Thread.join(timeout=)` が同じ状況で達成している挙動と同じ）。
+   strace でのタイムスタンプ付きトレースにより「syscall では無く
+   ユーザ空間の待機で止まっている」ことを特定し、フェーズ⑦の教訓
+   （バックグラウンドコマンドは `timeout` で囲む）に従って原因調査した。
+2. base64 の自前デコードで、TypeScript が `Buffer.from(s,"base64")` の
+   寛容さ（不正文字を黙って捨てる）を実機確認していたのと同じ罠を
+   踏まないよう、最初から厳格デコード（アルファベット外の文字・パディング
+   位置・長さの4の倍数チェック）で実装し、それぞれ個別にテストで固定した
+   （実装段階の罠であり手戻りは無し）。
+
+**テスト**: ライブラリ内テスト85件（`codec`/`transport`/`tests::match_`/
+`tests::conformance`）＋結合テスト `tests/client.rs`(17)・
+`tests/socket.rs`(4)・`tests/netcheck.rs`(5)＋doctest 8件
+（`cargo test --doc`）の計119件、`make rust-test` で stable・1.85 の
+両ツールチェーンで全緑。conformance の6ケースは `known_failing` 無しで
+全通過。netcheck は意図的に `std::process::Command` を codec へ混入させて
+失格すること、コメント除去を無効化して陽性対照が失格することの両方を
+実機で確認済み。
+
+**実機検証**: SSH forced command 経由の `connect("ssh", &[...])`（hello・
+`query` 往復、forced `--read-only` の実効性）と、socat `OPENSSL-LISTEN`
+越しの mTLS（`rustls::StreamOwned` → `connect_socket`、正しいクライアント
+証明書での成功、CAチェーン外証明書の `SSL_accept(): certificate verify
+failed` 拒否）を、Go・Python・TypeScript と同じ手順で実施。加えて Rust
+固有の主張——TLS でラップする前の `TcpStream` に設定した read timeout が
+実際にドライバの読み取りを束縛すること——も実測した（200ms のタイムアウト
+設定で、わざと遅いクエリに対し約255msで `Error::Timeout` が返ることを
+確認）。なお openssl のデフォルトの `x509 -req` 署名はクライアント証明書を
+X.509 v1 にするため rustls（aws-lc-rs バックエンド）が
+`UnsupportedCertVersion` で拒否する現象に遭遇——検証用の証明書生成にのみ
+`-extfile` で `basicConstraints`/`extendedKeyUsage` を追加して解消した
+（本ドキュメントが共有する CA/サーバ/クライアント証明書生成コマンド自体は
+変更していない。他3言語では顕在化しなかった Rust 側 TLS スタックの
+厳密さによるものと見られる）。
+
+**Makefile / CI**: `rust-build`/`rust-fmt`/`rust-lint`（clippy）/
+`rust-netcheck`/`rust-test` を追加（実行時・開発時依存ともゼロなので
+`python-venv`/`typescript-deps` のようなスタンプファイル式インストール
+手順は不要）。CI は `rust` ジョブを追加し `["1.85","stable"]` を
+マトリクス化（`rust-version`(MSRV) は cargo が強制しないため、宣言した
+下限を実際に実行して初めて保証される）。ツールチェーン導入は
+サードパーティアクションを使わず `rustup` 2行（devcontainer.json の
+「公式 features のみ」と同じ線引き）。
+
+**利用者向けドキュメント**（`.claude/`・`CLAUDE.md`・`PLAN.md` を一切
+参照しない）: ルート `README.md`/`README_ja.md` の言語表に Rust 行を
+追加。`rust/README.md` を `python/README.md` と同じ節構成で新規作成
+（英語のみ。Rust 固有の注意として `bool` が param にならずコンパイル
+エラーになる点、`Drop` が接続を閉じるため `with`/`defer` 相当が不要な点
+を明記）。`docs/usage/connecting.md`/`connecting_ja.md` の6箇所
+（Local・SSH リモートコマンド・Docker・Kubernetes・素のソケット・
+TLS/mTLS）に Rust の例を追加（計12編集）し、TLS 節には Rust の std に
+TLS が無いことを踏まえた専用の説明（`connect_socket` が TLS の継ぎ目に
+なる旨）を追加、SSH forced command・TLS/mTLS の「実際に検証した内容」
+にも Rust の確認結果を追記した。
+
+**内部ルールの更新**: `.claude/rules/naming.md`・`distribution.md` に
+Rust の行を追加（タグ規則 `rust/vX.Y.Z`）。`.devcontainer/devcontainer.json`
+に公式 `ghcr.io/devcontainers/features/rust:1`（`profile: default`、
+clippy/rustfmt 込み）と `rust-lang.rust-analyzer` 拡張・
+`rust-analyzer.linkedProjects` 設定を追加（下記「devcontainer.json
+反映待ちリスト」参照）。
+
+**この作業でやらなかったこと**: crates.io への実際の publish（③配布・
+公開はスコープ外、ユーザー作業として後続——PyPI・npm と同じ進め方）。
+
+`.claude/settings.json` の `PostToolUse` フックへの Rust 用分岐追加は
+まだ提案していない——次のユーザーとのやり取りで提案する
+（Go の `go-build` に倣い、`make rust-lint` ではなく `make rust-build`
+を編集ごとに走らせる想定。clippy は毎編集には遅いため）。
+
+**次はフェーズ⑨（5番目の言語）——需要を見て検討する。**
 
 ## GitHub リポジトリ設定（決定事項、リポジトリ作成時に設定）
 
@@ -583,9 +747,9 @@ TypeScript の行を追加（タグ規則 `typescript/vX.Y.Z`）。
 ## 未確認事項（実装前に決める・確かめる）
 
 - ~~devcontainer に `sshd` が入っていないため……~~ → **解消。**
-  フェーズ⑤・⑥・⑦それぞれで `sshd`（フェーズ⑦では非root・カスタム
-  ポートで一時起動）を立て、forced command 経由の SSH 直結を Go・
-  Python・TypeScript 全ドライバに対して end-to-end で確認済み
+  フェーズ⑤・⑥・⑦・⑧それぞれで `sshd`（フェーズ⑦以降は非root・
+  カスタムポートで一時起動）を立て、forced command 経由の SSH 直結を
+  Go・Python・TypeScript・Rust 全ドライバに対して end-to-end で確認済み
   （`docs/usage/connecting.md` の該当節参照）。
 
 ## 保留事項
@@ -616,3 +780,15 @@ TypeScript の行を追加（タグ規則 `typescript/vX.Y.Z`）。
     直接反映済み**。ただし `devcontainer-lock.json` は `devcontainer`
     CLI が無く手動更新するとハッシュを捏造することになるため未更新——
     次回実際にコンテナをリビルドするタイミングで自動生成させること。
+  - **Rust（rustup 経由の stable + 1.85）はフェーズ⑧のセッションで
+    手動導入し、`devcontainer.json` の features にも公式
+    `ghcr.io/devcontainers/features/rust:1`（`profile: default`）を
+    直接反映済み**。`rust-lang.rust-analyzer` 拡張と
+    `rust-analyzer.linkedProjects` 設定も同時に追記した。
+    `devcontainer-lock.json` は Python のときと同じ理由で未更新のまま
+    ——次回実際にコンテナをリビルドするタイミングで自動生成させること。
+- **`PostToolUse` フックへの Rust 用分岐は未提案**。Go の `go-build`
+  に倣い `*rust/*.rs`・`*rust/Cargo.toml` 編集後に `make rust-build` を
+  自動実行する案を、次にユーザーとやり取りする際に提案すること
+  （CLAUDE.md「ルール・スキルの提案」方針により、提案するだけで勝手に
+  適用しない）。

@@ -29,5 +29,15 @@ __pycache__/
 /typescript/san-db-ox
 /typescript/san-db-ox.exe
 
+# Rust のビルド成果物（ライブラリのため Cargo.lock は追跡しない。
+# 実行時依存・開発時依存ともゼロなので中身も自分自身だけになる）
+/rust/target/
+/rust/Cargo.lock
+
+# 保険: typescript と同じ理由。cargo test の cwd は rust/ になるため、
+# テスト側の隔離漏れがあると snapshot/overwrite の出力がここへ落ちうる。
+/rust/san-db-ox
+/rust/san-db-ox.exe
+
 *.log
 .DS_Store

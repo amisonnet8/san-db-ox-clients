@@ -54,6 +54,12 @@ The TypeScript driver's `connect` does the same:
 const c = await connect("bin/san-db-ox", ["--serve-stdio"]);
 ```
 
+The Rust driver's `connect` does the same:
+
+```rust
+let mut c = san_db_ox_client::connect("bin/san-db-ox", &["--serve-stdio"])?;
+```
+
 ### SSH remote command
 
 Without touching the server side at all, just launching
@@ -85,6 +91,12 @@ Same for the TypeScript driver:
 
 ```typescript
 const c = await connect("ssh", ["user@host", "san-db-ox", "--serve-stdio"]);
+```
+
+Same for the Rust driver:
+
+```rust
+let mut c = san_db_ox_client::connect("ssh", &["user@host", "san-db-ox", "--serve-stdio"])?;
 ```
 
 ### SSH forced command (the recommended route)
@@ -136,6 +148,10 @@ installed in the devcontainer; it's brought up by hand with
   (`ssh ... 'rm -rf /'`) still only ever gets the forced command, and that
   the forced `--read-only` is actually enforced (`snapshot()` rejects with
   the `read_only` code).
+- Confirmed the same for the Rust driver's `connect("ssh", &[...])`: the
+  hello line and a `query` round-trip both come back correctly, and the
+  forced `--read-only` is enforced (`snapshot()` rejects with the
+  `read_only` code).
 
 **Issue a separate `authorized_keys` entry (a separate key pair) for a
 read-write key versus a read-only key.** Don't give one key both
@@ -159,6 +175,10 @@ c = san_db_ox.connect("docker", ["run", "-i", "--rm", image, "--serve-stdio"])
 const c = await connect("docker", ["run", "-i", "--rm", image, "--serve-stdio"]);
 ```
 
+```rust
+let mut c = san_db_ox_client::connect("docker", &["run", "-i", "--rm", image, "--serve-stdio"])?;
+```
+
 ### Kubernetes
 
 ```bash
@@ -175,6 +195,10 @@ c = san_db_ox.connect("kubectl", ["exec", "-i", pod, "--", "san-db-ox", "--serve
 
 ```typescript
 const c = await connect("kubectl", ["exec", "-i", pod, "--", "san-db-ox", "--serve-stdio"]);
+```
+
+```rust
+let mut c = san_db_ox_client::connect("kubectl", &["exec", "-i", pod, "--", "san-db-ox", "--serve-stdio"])?;
 ```
 
 ## Over socat (socket)
@@ -195,7 +219,9 @@ direct-connect doesn't have.
 executable) over socat.** Multiple child processes could end up writing
 the same executable path at once. (In the Go driver, `*SocketClient`
 simply has no `Overwrite` method -- it can't be called, by the type
-system.)
+system. The Rust driver's `SocketClient` has no `overwrite` method
+either, for the same reason -- calling it is a compile error, not a
+runtime one.)
 
 ### Plain TCP/UNIX socket
 
@@ -223,6 +249,12 @@ c = san_db_ox.connect_tcp("127.0.0.1", 5432)
 const c = await connectUnix("/tmp/sandbox.sock");
 // or
 const c2 = await connectTcp("127.0.0.1", 5432);
+```
+
+```rust
+let mut c = san_db_ox_client::connect_unix("/tmp/sandbox.sock")?;
+// or
+let mut c2 = san_db_ox_client::connect_tcp(("127.0.0.1", 5432))?;
 ```
 
 ### TLS/mTLS (client-certificate authentication)
@@ -339,6 +371,49 @@ and confirming a client certificate outside the CA chain gets the same
 server-side rejection (`SSL_accept(): certificate verify failed`) as the
 other two drivers -- the check happens entirely on socat's side, so this
 is expected rather than a coincidence.
+
+Rust's standard library has no TLS at all, so this driver can't even name
+a TLS type, let alone provide a TLS-specific constructor. The seam is the
+same shape as the other three drivers' -- `connect_socket` takes anything
+that implements `Read + Write`, so the caller brings their own TLS crate
+(`rustls` below; `native-tls` works the same way) and this driver depends
+on neither:
+
+```rust
+// rustls and its cert loader are the CALLER's dependencies. This driver
+// depends on no TLS crate and has no TLS-specific constructor -- it only
+// needs something that implements Read + Write.
+let tcp = std::net::TcpStream::connect("host:5432")?;
+// Required: connect_socket cannot set this itself on an arbitrary stream,
+// and a rustls/native-tls read delegates to the underlying socket, so
+// this is what bounds every read the driver makes.
+tcp.set_read_timeout(Some(std::time::Duration::from_secs(30)))?;
+
+let mut roots = rustls::RootCertStore::empty();
+roots.add_parsable_certificates(load_certs("ca.pem")?);
+let config = rustls::ClientConfig::builder()
+    .with_root_certificates(roots)
+    .with_client_auth_cert(load_certs("client-cert.pem")?, load_key("client-key.pem")?)?;
+let conn = rustls::ClientConnection::new(
+    std::sync::Arc::new(config),
+    "sandbox.example.com".try_into()?, // must match the server certificate's SAN
+)?;
+
+let mut c = san_db_ox_client::connect_socket(
+    rustls::StreamOwned::new(conn, tcp),
+    SocketOptions::new(),
+)?;
+```
+
+This combination (`rustls::StreamOwned` → `connect_socket`) was also run
+against the same socat listener, confirming the hello line and a `query`
+round-trip, confirming a client certificate outside the CA chain gets the
+same server-side rejection (`SSL_accept(): certificate verify failed`) as
+the other three drivers, and confirming that a read timeout set on the
+pre-TLS `TcpStream` actually bounds the driver's reads through the TLS
+wrapper -- the one claim above that's specific to Rust, so it was measured
+(a 200ms `TcpStream` timeout against a deliberately slow query returned
+`Error::Timeout` in ~255ms) rather than assumed.
 
 ### Restricting source IP addresses
 
