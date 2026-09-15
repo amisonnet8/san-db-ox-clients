@@ -15,7 +15,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { connectTcp, connectUnix } from "../src/client.js";
 import { PROTOCOL } from "../src/codec.js";
 import { SocketTransport } from "../src/transport.js";
-import { CALL_TIMEOUT_MS, hasSocat, sanDbOxBin } from "./helpers.js";
+import { CALL_TIMEOUT_MS, hasSocat, isolatedCwd, sanDbOxBin } from "./helpers.js";
 
 const posixOnly = { skip: process.platform === "win32" ? "POSIX-only" : false };
 const enc = (s: string) => new TextEncoder().encode(s);
@@ -67,7 +67,10 @@ function bridgeOnce(
   binary: string,
   args: readonly string[],
 ): ChildProcess {
-  const child = spawn(binary, args, { stdio: ["pipe", "pipe", "ignore"] });
+  const child = spawn(binary, args, {
+    stdio: ["pipe", "pipe", "ignore"],
+    cwd: isolatedCwd(),
+  });
   conn.on("error", () => {});
   child.stdin?.on("error", () => {});
   child.stdout?.on("error", () => {});

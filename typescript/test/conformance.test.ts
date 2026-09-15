@@ -9,7 +9,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { DirectTransport } from "../src/transport.js";
-import { CALL_TIMEOUT_MS, repoRoot, sanDbOxBin } from "./helpers.js";
+import { CALL_TIMEOUT_MS, isolatedCwd, repoRoot, sanDbOxBin } from "./helpers.js";
 import { matchJson, parseLiteral, stringifyLiteral } from "./match.js";
 
 const CLOSE_TIMEOUT_MS = 5_000;
@@ -58,10 +58,11 @@ for (const path of paths) {
     const text = readFileSync(path, "utf-8");
     const parsed = parseLiteral(text) as Case;
 
-    const transport = DirectTransport.start(bin, [
-      "--serve-stdio",
-      ...(parsed.args ?? []),
-    ]);
+    const transport = DirectTransport.start(
+      bin,
+      ["--serve-stdio", ...(parsed.args ?? [])],
+      { cwd: isolatedCwd() },
+    );
     const mismatches: string[] = [];
     try {
       // Discard the hello line -- the conformance suite exercises the

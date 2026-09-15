@@ -19,7 +19,13 @@ import {
   SanDBoxTimeoutError,
   VERSION,
 } from "../src/index.js";
-import { CALL_TIMEOUT_MS, copyOfBinary, repoRoot, sanDbOxBin } from "./helpers.js";
+import {
+  CALL_TIMEOUT_MS,
+  copyOfBinary,
+  isolatedCwd,
+  repoRoot,
+  sanDbOxBin,
+} from "./helpers.js";
 
 function requireBinary(t: TestContext): string | null {
   const bin = sanDbOxBin();
@@ -30,8 +36,19 @@ function requireBinary(t: TestContext): string | null {
   return bin;
 }
 
-async function openClient(bin: string, args: readonly string[] = []): Promise<Client> {
-  return connect(bin, ["--serve-stdio", ...args], { timeoutMs: CALL_TIMEOUT_MS });
+// Every connection spawns with an isolated cwd by default: an op like
+// `snapshot` writes into the child's cwd (and returns a path relative to
+// it) when no filename is given, and without this the file would land in
+// the Node test runner's own cwd instead (typescript/ under
+// `make typescript-test`). Pass an explicit `cwd` to share one directory
+// across connections, e.g. so a `load(path)` on a second connection can
+// find a first connection's relative snapshot path.
+async function openClient(
+  bin: string,
+  args: readonly string[] = [],
+  cwd: string = isolatedCwd(),
+): Promise<Client> {
+  return connect(bin, ["--serve-stdio", ...args], { timeoutMs: CALL_TIMEOUT_MS, cwd });
 }
 
 describe("connect", () => {
@@ -209,7 +226,11 @@ describe("snapshot / load / inspect / tables / schema / dump", () => {
   }, async (t) => {
     const bin = requireBinary(t);
     if (!bin) return;
-    const c1 = await openClient(bin);
+    // snapshot() with no filename returns a path relative to the server's
+    // own cwd -- share one isolated cwd across both connections so the
+    // second connection's load(path) can find it.
+    const cwd = isolatedCwd();
+    const c1 = await openClient(bin, [], cwd);
     let path: string;
     try {
       await c1.exec("CREATE TABLE t(x)");
@@ -218,7 +239,7 @@ describe("snapshot / load / inspect / tables / schema / dump", () => {
     } finally {
       await c1.close();
     }
-    const c2 = await openClient(bin);
+    const c2 = await openClient(bin, [], cwd);
     try {
       await c2.load(path);
       const r = await c2.query("SELECT x FROM t");

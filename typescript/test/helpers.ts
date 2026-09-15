@@ -42,6 +42,16 @@ export function copyOfBinary(bin: string): { path: string; cleanup: () => void }
   };
 }
 
+/** A fresh, empty temp directory to use as a spawned san-db-ox process's
+ *  cwd. Without this, a test that doesn't pass its own `filename` to an op
+ *  like `snapshot` -- which writes into the child's cwd by default -- would
+ *  otherwise write into the Node test runner's own cwd (which is
+ *  typescript/ when run via `make typescript-test`) and pollute the repo
+ *  working tree. Not cleaned up automatically; OS temp cleanup handles it. */
+export function isolatedCwd(): string {
+  return mkdtempSync(join(tmpdir(), "san-db-ox-ts-cwd-"));
+}
+
 export function hasSocat(): boolean {
   try {
     execFileSync("socat", ["-V"], { stdio: "ignore" });

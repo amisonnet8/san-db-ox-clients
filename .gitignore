@@ -22,5 +22,12 @@ __pycache__/
 /typescript/dist/
 /typescript/build-test/
 
+# 保険: テストが cwd を隔離し損ねた場合に snapshot/overwrite が
+# ここへ書き込みうる（実際に一度、隔離漏れで snapshot 出力がここに
+# コミットされる事故があった。原因はテスト側で修正済みだが、
+# 再発時に誤ってコミットしないための最終防衛線として残す）。
+/typescript/san-db-ox
+/typescript/san-db-ox.exe
+
 *.log
 .DS_Store
