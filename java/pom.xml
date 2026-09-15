@@ -195,7 +195,14 @@
           <plugin>
             <groupId>org.sonatype.central</groupId>
             <artifactId>central-publishing-maven-plugin</artifactId>
-            <version>0.7.0</version>
+            <!--
+              0.7.0 failed deploy with UnrecognizedPropertyException on a
+              "warnings" field: the Central Portal API added this field to
+              its deployment response, and 0.7.0's client-side response
+              model predates it (encountered and fixed during the actual
+              publish, 2026-09-15). 0.11.0 is current as of that date.
+            -->
+            <version>0.11.0</version>
             <extensions>true</extensions>
             <configuration>
               <publishingServerId>central</publishingServerId>

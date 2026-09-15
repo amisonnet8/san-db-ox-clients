@@ -12,9 +12,8 @@
 6. **⑥ Python ドライバ**: 完了。
 7. **⑦ TypeScript ドライバ**: 完了。
 8. **⑧ Rust ドライバ**: 完了。
-9. **⑨ Java ドライバ【現在地】**: 実装完了。Maven Central への publish は
-   ③配布・公開（ユーザー作業）待ち。
-10. **⑩以降 他言語への展開**: 需要を見て Kotlin / Ruby / C#(.NET) / PHP /
+9. **⑨ Java ドライバ**: 完了。
+10. **⑩以降 他言語への展開【現在地】**: 需要を見て Kotlin / Ruby / C#(.NET) / PHP /
     C から検討する。
 
 ## 言語の優先順位の根拠
@@ -37,8 +36,8 @@ stdio結合、SQL学習サンドボックス）を軸に検討した結果:
 ## 現在地
 
 **フェーズ①〜⑨完了。Go・Python・TypeScript・Rust・Java の5言語すべてが
-実装・テスト・ドキュメント整備済み。フェーズ⑩（6番目の言語）着手前——
-需要を見て検討する。**
+実装・テスト・ドキュメント整備・公開済み。フェーズ⑩（6番目の言語）
+着手前——需要を見て検討する。**
 
 ### 公開ページ一覧
 
@@ -51,6 +50,7 @@ stdio結合、SQL学習サンドボックス）を軸に検討した結果:
 | Python | https://pypi.org/project/san-db-ox-client/ |
 | TypeScript | https://www.npmjs.com/package/@amisonnet8/san-db-ox-client |
 | Rust | https://crates.io/crates/san-db-ox-client |
+| Java | https://repo1.maven.org/maven2/io/github/amisonnet8/san-db-ox-client/ |
 
 TypeScript の公開（2026-09-15）: `npm publish --access public` で
 `@amisonnet8/san-db-ox-client@0.1.0` を公開。npm の Granular Access
@@ -66,6 +66,46 @@ Rust の公開（2026-09-15）: `cargo login` でトークンを設定した後
 `san-db-ox-client@0.1.0` を公開。npm・PyPI のような2FA・スコープ関連の
 詰まりどころは無く、一度で成功した。crates.io API
 （`https://crates.io/api/v1/crates/san-db-ox-client`）で実機確認済み。
+
+Java の公開（2026-09-15）: Sonatype Central Portal で `io.github.amisonnet8`
+namespace を検証（GitHub連携ログインにより自動検証）した後、GPG鍵を生成し
+公開鍵サーバへ登録、`~/.m2/settings.xml` に Central Portal のユーザー
+トークンを設定して `mvn -Prelease deploy`（署名込み）で公開。既存3言語の
+どれとも異なる、**Java 固有の詰まりどころが3つ**あった:
+1. `gpg --full-generate-key` が `agent_genkey failed: Forbidden` で失敗
+   ——原因は**古い状態のまま残っていた `gpg-agent` プロセス**で、
+   `gpgconf --kill gpg-agent` で再起動すると解消した（devcontainer 上で
+   実際に再現・修正を確認済み）。
+2. 復旧後の動作確認（`gpg --clearsign`）で `Inappropriate ioctl for
+   device` ——`GPG_TTY` 環境変数が未設定だったため。
+   `export GPG_TTY=$(tty)` で解消（`~/.bashrc` にも追記して恒久化）。
+3. `mvn -Prelease deploy` が
+   `UnrecognizedPropertyException: Unrecognized field "warnings"`
+   で失敗——**`central-publishing-maven-plugin` 0.7.0 の応答モデルが
+   古く、Central Portal API 側が新しく追加した `warnings` フィールドを
+   認識できなかった**ことが原因。`0.11.0`（公開当日時点の最新）へ
+   引き上げて解消（`pom.xml` にコメントで経緯を記録済み）。
+
+**`settings.xml` の置き場所についての教訓**: ユーザーが Maven の
+`settings.xml`（トークンを含む）を一時的にプロジェクトルート
+（`/workspaces/san-db-ox-clients/settings.xml`、VS Code で編集しやすい
+場所）に置いた状態で、Claude が内容を読んでしまい、トークンの値が会話
+コンテキストに露出する事故があった。**幸い git 管理下には一度も入って
+おらず**（`git status`/`git log` で確認済み）、実害は限定的だったが、
+以後この種の作業では「認証情報を含むファイルは先に配置場所を確認して
+から読む」ことを徹底する。ユーザーには念のためトークンの再発行を提案
+したが、判断はユーザーに委ねた。
+
+`mvn deploy` 自体は成功した後も、Central Portal 側で
+**「VALIDATED」状態のバンドルを手動で Publish する一手間**が要る
+（`pom.xml` の `central-publishing-maven-plugin` は意図的に自動公開
+（`autoPublish`）を設定していない——ユーザーが内容を確認してから公開
+する運用）。Publish 後、`repo1.maven.org` への実体反映までは数十分〜
+数時間かかった（`search.maven.org` の検索インデックスはさらに遅れて
+反映される、実体とは別レイヤーであることも確認）。最終的に
+`https://repo1.maven.org/maven2/io/github/amisonnet8/san-db-ox-client/`
+で jar の実体取得（200応答、73,611バイト）と `maven-metadata.xml` の
+`0.1.0` を実機確認済み。
 
 ### 開発の進め方（フェーズ⑥で確定した方針）
 
@@ -930,12 +970,11 @@ command・TLS/mTLS の「実際に検証した内容」にも Java の確認結�
 パターン。シミュレーションで実際に発火することと、無関係なファイルでは
 発火しないことの両方を確認済み）。
 
-**この作業でやらなかったこと**: Maven Central への実際の publish
-（③配布・公開はスコープ外、ユーザー作業として後続——GPG鍵・Central
-Portal アカウント・`io.github.amisonnet8` namespace 所有確認が必要。
-`pom.xml` の `release` プロファイルに source/javadoc jar・GPG署名・
-`central-publishing-maven-plugin` を先に仕込み済みなので、ユーザー側は
-`mvn -Prelease deploy` 1コマンドで済む状態にしてある）。
+Maven Central への publish（③配布・公開、ユーザー作業）も完了した
+（GPG鍵生成・namespace検証・`mvn -Prelease deploy`・Central Portal での
+手動 Publish。詰まった3点と `settings.xml` の教訓は「公開ページ一覧」
+直下参照）。これでフェーズ⑨（Javaドライバ）が完全に完了し、
+Go・Python・TypeScript・Rust・Java の5言語すべてが実装・公開済みになった。
 
 **次はフェーズ⑩（6番目の言語）——需要を見て検討する。**
 
