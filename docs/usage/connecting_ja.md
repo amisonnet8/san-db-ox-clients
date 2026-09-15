@@ -46,6 +46,12 @@ Python ドライバの `connect` も同様。
 c = san_db_ox.connect("bin/san-db-ox", ["--serve-stdio"])
 ```
 
+TypeScript ドライバの `connect` も同様。
+
+```typescript
+const c = await connect("bin/san-db-ox", ["--serve-stdio"]);
+```
+
 ### SSH リモートコマンド直結
 
 サーバ側に手を加えず、単に `ssh` 経由で `san-db-ox --serve-stdio` を
@@ -70,6 +76,12 @@ Python ドライバも同様に SSH 専用のコンストラクタは持たな�
 
 ```python
 c = san_db_ox.connect("ssh", ["user@host", "san-db-ox", "--serve-stdio"])
+```
+
+TypeScript ドライバも同様。
+
+```typescript
+const c = await connect("ssh", ["user@host", "san-db-ox", "--serve-stdio"]);
 ```
 
 ### SSH forced command（推奨経路）
@@ -114,6 +126,11 @@ devcontainer に導入済み。テストのたびに `sudo /usr/sbin/sshd -p <po
   確認した（SSH 専用のコードパスは存在しない）。
 - Python ドライバの `san_db_ox.connect("ssh", [...])` についても同様に
   確認した。
+- TypeScript ドライバの `connect("ssh", [...])` についても同様に確認
+  した。クライアントが任意のコマンド（`ssh ... 'rm -rf /'`）を送っても
+  forced command だけが実行されること、forced command の `--read-only`
+  が実際に効いていること（`snapshot()` が `read_only` コードで拒否
+  される）の両方を確認した。
 
 **読み書き両方を許す鍵と読み取り専用の鍵は、`authorized_keys` の別エントリ
 （別の鍵ペア）として分けて発行すること。** 1つの鍵に両方の権限を持たせて
@@ -133,6 +150,10 @@ c, err := sandbox.Open(ctx, "docker", []string{"run", "-i", "--rm", image, "--se
 c = san_db_ox.connect("docker", ["run", "-i", "--rm", image, "--serve-stdio"])
 ```
 
+```typescript
+const c = await connect("docker", ["run", "-i", "--rm", image, "--serve-stdio"]);
+```
+
 ### Kubernetes
 
 ```bash
@@ -145,6 +166,10 @@ c, err := sandbox.Open(ctx, "kubectl", []string{"exec", "-i", pod, "--", "san-db
 
 ```python
 c = san_db_ox.connect("kubectl", ["exec", "-i", pod, "--", "san-db-ox", "--serve-stdio"])
+```
+
+```typescript
+const c = await connect("kubectl", ["exec", "-i", pod, "--", "san-db-ox", "--serve-stdio"]);
 ```
 
 ## socat 経由（ソケット）
@@ -184,6 +209,12 @@ c, err := sandbox.OpenSocket(ctx, "tcp", "127.0.0.1:5432")
 c = san_db_ox.connect_unix("/tmp/sandbox.sock")
 # または
 c = san_db_ox.connect_tcp("127.0.0.1", 5432)
+```
+
+```typescript
+const c = await connectUnix("/tmp/sandbox.sock");
+// または
+const c2 = await connectTcp("127.0.0.1", 5432);
 ```
 
 ### TLS/mTLS（クライアント証明書による認証）
@@ -270,6 +301,31 @@ c = san_db_ox.connect_socket(tls_sock)
 される（`SSL_accept(): certificate verify failed`）ことも、どちらの
 ドライバで接続しても同じ結果になることを確認した——この検証は socat
 側だけで完結している。
+
+TypeScript ドライバも同じ形——TLS 専用のコンストラクタは持たず、
+`tls.connect` の戻り値（`Duplex` として受け取るため、ドライバ自体は
+`node:tls` を一切 import しない）をそのまま `connectSocket` に渡す。
+
+```typescript
+import { connect as tlsConnect } from "node:tls";
+import { readFileSync } from "node:fs";
+
+const socket = tlsConnect({
+  host: "host",
+  port: 5432,
+  ca: readFileSync("ca.pem"),
+  cert: readFileSync("client-cert.pem"),
+  key: readFileSync("client-key.pem"),
+  servername: "sandbox.example.com",
+});
+const c = await connectSocket(socket);
+```
+
+この組み合わせ（`tls.connect` → `connectSocket`）も同じ socat 待受に対して
+実際に動かし、hello 行・`query` の往復と、CA チェーン外のクライアント
+証明書が同じく `SSL_accept(): certificate verify failed` でサーバ側から
+拒否されることの両方を確認済み——この検証は socat 側だけで完結している
+ため、他の2言語と同じ結果になるのは偶然ではなく想定どおり。
 
 ### 接続元IP アドレスの制限
 

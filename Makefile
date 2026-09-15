@@ -1,5 +1,7 @@
 .PHONY: shellcheck trivy fetch go-build go-vet go-test go-netcheck test-docs \
-	python-venv python-lint python-typecheck python-netcheck python-test
+	python-venv python-lint python-typecheck python-netcheck python-test \
+	typescript-deps typescript-build typescript-build-test typescript-lint \
+	typescript-typecheck typescript-netcheck typescript-test
 
 # ShellCheck every tracked shell script. git ls-files enumerates them so a
 # new script needs no Makefile change (mirrors san-db-ox's own `make
@@ -106,3 +108,55 @@ python-netcheck: python-venv
 # works if fetch is skipped and SAN_DB_OX_BIN is set instead.
 python-test: fetch python-venv
 	$(PY) -m pytest python/tests
+
+# TypeScript targets are prefixed typescript- (.claude/rules/
+# directory-structure.md, same reasoning as go-/python-). Runtime
+# dependencies are zero, matching Go and Python; only dev tooling
+# (typescript/@biomejs/biome/@types/node) is installed.
+
+TS_DIR := typescript
+NPM ?= npm
+
+typescript-deps: $(TS_DIR)/node_modules/.package-lock.json
+
+# npm ci writes node_modules/.package-lock.json itself, which doubles as the
+# stamp file -- the same pattern as $(PY_VENV)/pyvenv.cfg above.
+$(TS_DIR)/node_modules/.package-lock.json: $(TS_DIR)/package-lock.json $(TS_DIR)/package.json
+	cd $(TS_DIR) && $(NPM) ci
+	@touch $@
+
+# The published artifact: src -> dist, with .d.ts declarations.
+typescript-build: typescript-deps
+	cd $(TS_DIR) && ./node_modules/.bin/tsc -p tsconfig.build.json
+
+# src+test -> build-test, run directly with node --test (no declarations).
+# Node 22.12's TypeScript type-stripping is still experimental, so tests are
+# compiled ahead of time rather than run with --experimental-strip-types.
+typescript-build-test: typescript-deps
+	cd $(TS_DIR) && ./node_modules/.bin/tsc -p tsconfig.test.json
+
+typescript-lint: typescript-deps
+	cd $(TS_DIR) && ./node_modules/.bin/biome ci .
+
+# Compiling test/ (not just src/) is what makes the `// @ts-expect-error`
+# assertions in client.test.ts load-bearing: SocketClient must NOT type-check
+# as having overwrite/exitCode, and this is the step that would catch it.
+typescript-typecheck: typescript-deps
+	cd $(TS_DIR) && ./node_modules/.bin/tsc -p tsconfig.test.json --noEmit
+
+# Same idea as go-netcheck/python-netcheck (.claude/rules/architecture.md):
+# confirms src/codec.ts stays free of node:net/node:child_process/etc, both
+# by import allowlist and by a runtime module-load-graph diff. Depends on
+# typescript-build because it inspects the built dist/codec.js.
+typescript-netcheck: typescript-build
+	cd $(TS_DIR) && node netcheck.mjs
+
+# fetch dependency mirrors go-test/python-test: individual tests skip (not
+# fail) when no san-db-ox binary is found (.claude/rules/testing.md).
+# The glob (not a bare directory) is required: `node --test <dir>` tries to
+# require() the directory itself rather than discovering files under it.
+# match.js (test/match.ts's build output) is deliberately not *.test.js, so
+# the glob doesn't collect it as a test file -- mirrors why Python named its
+# equivalent _conformance_support.py.
+typescript-test: fetch typescript-build-test
+	cd $(TS_DIR) && node --test 'build-test/test/**/*.test.js'

@@ -11,6 +11,11 @@
     // in python/.venv via `make python-venv`, not globally.
     "ghcr.io/devcontainers/features/python:1": {
       "version": "3.11"
+    },
+    // TypeScript driver requires Node >=22.12 (JSON.parse reviver source-text
+    // access, JSON.rawJSON); bookworm's apt nodejs is 18.x, too old.
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "22"
     }
   },
   "customizations": {
@@ -21,7 +26,8 @@
         "github.vscode-github-actions",
         "timonwong.shellcheck",
         "ms-python.python",
-        "charliermarsh.ruff"
+        "charliermarsh.ruff",
+        "biomejs.biome"
       ],
       "settings": {
         "go.useLanguageServer": true,

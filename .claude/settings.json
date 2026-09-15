@@ -26,6 +26,10 @@
           {
             "type": "command",
             "command": "jq -r '.tool_input.file_path // .tool_response.filePath // empty' | { read -r f; case \"$f\" in *python/*.py|*python/pyproject.toml) cd /workspaces/san-db-ox-clients && make python-lint && make python-typecheck ;; esac; }"
+          },
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // .tool_response.filePath // empty' | { read -r f; case \"$f\" in *typescript/*.ts|*typescript/package.json) cd /workspaces/san-db-ox-clients && make typescript-typecheck ;; esac; }"
           }
         ]
       }

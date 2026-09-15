@@ -48,6 +48,12 @@ The Python driver's `connect` does the same:
 c = san_db_ox.connect("bin/san-db-ox", ["--serve-stdio"])
 ```
 
+The TypeScript driver's `connect` does the same:
+
+```typescript
+const c = await connect("bin/san-db-ox", ["--serve-stdio"]);
+```
+
 ### SSH remote command
 
 Without touching the server side at all, just launching
@@ -73,6 +79,12 @@ Same for the Python driver -- no SSH-specific constructor there either:
 
 ```python
 c = san_db_ox.connect("ssh", ["user@host", "san-db-ox", "--serve-stdio"])
+```
+
+Same for the TypeScript driver:
+
+```typescript
+const c = await connect("ssh", ["user@host", "san-db-ox", "--serve-stdio"]);
 ```
 
 ### SSH forced command (the recommended route)
@@ -119,6 +131,11 @@ installed in the devcontainer; it's brought up by hand with
   command (there's no SSH-specific code path).
 - Confirmed the same for the Python driver's `san_db_ox.connect("ssh",
   [...])`.
+- Confirmed the same for the TypeScript driver's `connect("ssh", [...])`,
+  including that a client sending an arbitrary command
+  (`ssh ... 'rm -rf /'`) still only ever gets the forced command, and that
+  the forced `--read-only` is actually enforced (`snapshot()` rejects with
+  the `read_only` code).
 
 **Issue a separate `authorized_keys` entry (a separate key pair) for a
 read-write key versus a read-only key.** Don't give one key both
@@ -138,6 +155,10 @@ c, err := sandbox.Open(ctx, "docker", []string{"run", "-i", "--rm", image, "--se
 c = san_db_ox.connect("docker", ["run", "-i", "--rm", image, "--serve-stdio"])
 ```
 
+```typescript
+const c = await connect("docker", ["run", "-i", "--rm", image, "--serve-stdio"]);
+```
+
 ### Kubernetes
 
 ```bash
@@ -150,6 +171,10 @@ c, err := sandbox.Open(ctx, "kubectl", []string{"exec", "-i", pod, "--", "san-db
 
 ```python
 c = san_db_ox.connect("kubectl", ["exec", "-i", pod, "--", "san-db-ox", "--serve-stdio"])
+```
+
+```typescript
+const c = await connect("kubectl", ["exec", "-i", pod, "--", "san-db-ox", "--serve-stdio"]);
 ```
 
 ## Over socat (socket)
@@ -192,6 +217,12 @@ c, err := sandbox.OpenSocket(ctx, "tcp", "127.0.0.1:5432")
 c = san_db_ox.connect_unix("/tmp/sandbox.sock")
 # or
 c = san_db_ox.connect_tcp("127.0.0.1", 5432)
+```
+
+```typescript
+const c = await connectUnix("/tmp/sandbox.sock");
+// or
+const c2 = await connectTcp("127.0.0.1", 5432);
 ```
 
 ### TLS/mTLS (client-certificate authentication)
@@ -282,6 +313,32 @@ the hello line and a `query` round-trip, and confirming a client
 certificate outside the CA chain gets the same server-side rejection
 (`SSL_accept(): certificate verify failed`) regardless of which driver is
 connecting -- the check happens entirely on socat's side.
+
+The TypeScript driver has the same shape too: no TLS-specific constructor,
+just `connectSocket` wrapping whatever `tls.connect` returns (typed as a
+`Duplex`, so the driver itself never imports `node:tls`):
+
+```typescript
+import { connect as tlsConnect } from "node:tls";
+import { readFileSync } from "node:fs";
+
+const socket = tlsConnect({
+  host: "host",
+  port: 5432,
+  ca: readFileSync("ca.pem"),
+  cert: readFileSync("client-cert.pem"),
+  key: readFileSync("client-key.pem"),
+  servername: "sandbox.example.com",
+});
+const c = await connectSocket(socket);
+```
+
+This combination (`tls.connect` → `connectSocket`) was also run against the
+same socat listener, confirming the hello line and a `query` round-trip,
+and confirming a client certificate outside the CA chain gets the same
+server-side rejection (`SSL_accept(): certificate verify failed`) as the
+other two drivers -- the check happens entirely on socat's side, so this
+is expected rather than a coincidence.
 
 ### Restricting source IP addresses
 

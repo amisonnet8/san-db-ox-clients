@@ -39,6 +39,7 @@ op 名は、各言語の命名慣習（camelCase/snake_case 等）へ写像す�
 | :--- | :--- | :--- | :--- |
 | Go | `go/`（`go.mod` のルート）、実体は `go/sandbox/` | module `github.com/amisonnet8/san-db-ox-clients/go`、package `sandbox` | `go/vX.Y.Z` |
 | Python | `python/`（`pyproject.toml` のルート）、実体は `python/src/san_db_ox/` | 配布名（PyPI）`san-db-ox-client`、import 名 `san_db_ox`（第2段表記。ハイフンは Python の識別子に使えない） | `python/vX.Y.Z` |
+| TypeScript | `typescript/`（`package.json` のルート）、実体は `typescript/src/` | npm パッケージ `@amisonnet8/san-db-ox-client`（スコープ付き。PyPI で `san-db-ox`→`sandbox` の正規化により衝突した問題圏に、スコープを切ることで最初から入らない） | `typescript/vX.Y.Z` |
 
 **`go/` を直接パッケージにしない。** import パス末尾が `go` になると
 呼び出し側のコードで名前が推測できず、しかも `go` は Go の予約語でもある。

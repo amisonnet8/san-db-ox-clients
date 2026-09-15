@@ -17,5 +17,10 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 
+# TypeScript の依存・ビルド成果物（package-lock.json は追跡する）
+/typescript/node_modules/
+/typescript/dist/
+/typescript/build-test/
+
 *.log
 .DS_Store

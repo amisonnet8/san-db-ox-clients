@@ -30,7 +30,7 @@ Driver version numbers are not tied to the upstream version; the
 | :--- | :--- |
 | Go | available — see [`go/`](go/) |
 | Python | available — see [`python/`](python/) |
-| TypeScript | planned |
+| TypeScript | available — see [`typescript/`](typescript/) |
 
 ## Connecting
 

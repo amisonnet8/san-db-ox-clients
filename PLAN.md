@@ -10,8 +10,9 @@
 4. **④Go ドライバ: ソケットトランスポート（オプション層）**: 完了。
 5. **⑤ドキュメント・配布**: 完了。
 6. **⑥ Python ドライバ**: 完了。
-7. **⑦以降 他言語への展開【現在地】**: TypeScript →（需要を見て
-   Rust / JVM(Java・Kotlin) / Ruby / C#(.NET) / PHP / C）。
+7. **⑦ TypeScript ドライバ**: 完了。
+8. **⑧以降 他言語への展開【現在地】**: 需要を見て
+   Rust / JVM(Java・Kotlin) / Ruby / C#(.NET) / PHP / C から検討する。
 
 ## 言語の優先順位の根拠
 
@@ -31,7 +32,7 @@ stdio結合、SQL学習サンドボックス）を軸に検討した結果:
 
 ## 現在地
 
-**フェーズ①〜⑥完了。フェーズ⑦（TypeScript）着手前。**
+**フェーズ①〜⑦完了。フェーズ⑧（4番目の言語）着手前——需要を見て検討する。**
 
 ### 公開ページ一覧
 
@@ -421,7 +422,134 @@ Go ドライバをリファレンス実装として、`python/` 配下に Python
 `san_db_ox_client-0.1.0-py3-none-any.whl` / `.tar.gz`）。
 `pip install san-db-ox-client` で導入し `import san_db_ox` で使う。
 
-**次はフェーズ⑦（TypeScript）。**
+### フェーズ⑦（TypeScript ドライバ）で行ったこと
+
+計画を一度 `~/.claude` 配下に立てた状態で devcontainer をリビルドし
+（Node 22 feature を追加するため）計画が消失する事故が発生（`/workspaces`
+以外はリビルドで全消去される——教訓としてメモリに保存済み）。計画を
+`typescript-drifting-pnueli.md` として立て直し、Go/Python ドライバの構造
+（`_codec.py`/`_transport.py`/`_client.py`、`go/sandbox/`）を参照しながら
+一気に実装した。
+
+**確定した方針**（ユーザー確定、再検討しない）:
+- npm パッケージ名 `@amisonnet8/san-db-ox-client`（スコープ付き）。PyPI で
+  `san-db-ox`→`sandbox` 正規化により踏んだ名前衝突の問題圏に、スコープを
+  切ることで最初から入らない。
+- ESM のみ（`"type":"module"`）。Node >=22.12 は CJS 側から `require()` で
+  ESM を読めるため、CJS 利用者も困らない。
+- 値の対応: SQLite INTEGER↔`bigint` / REAL↔`number` / TEXT↔`string` /
+  BLOB↔`Uint8Array` / NULL↔`null`。双方向で曖昧さがない設計。
+  `[42n]` は INTEGER、`[42]` は REAL を束縛する。
+- Lint/Format は Biome（devcontainer に `biomejs.biome` 拡張が既に入って
+  いたため。ESLint/Prettier は使わない）。
+- テストランナーは `node:test` + `node:assert/strict`（依存ゼロの方針。
+  Node 22.12 では TypeScript の型剥がしが実験的フラグ付きのため、
+  `tsc` でコンパイルしてから JS として実行する）。
+
+**数値の忠実性**（プロトコル契約「64bit整数を倍精度へデコードしない」の
+実装の核）: `JSON.parse` の reviver が受け取る第3引数 `context.source`
+（トークンの原文）を使い、`.`/`e` を含めば `Number()`（REAL）、含まなければ
+`BigInt()`（INTEGER）に振り分ける。これが Go の `json.Number`・Python の
+`parse_int`/`parse_float` フックの TypeScript での対応物。conformance
+ランナー側は `JSON.rawJSON()` でトークンをそのまま保持する別ポリシーを
+使い、`JSON.stringify` がそのボックスをそのまま再出力してくれるため、
+Python の `dumps_literal` 相当の自前シリアライザが不要になった（実機で
+`9223372036854775807`・`88.0`・`9e999` の byte-for-byte 往復を確認済み）。
+`JSON.rawJSON`/`JSON.isRawJSON`/reviver 第3引数は TypeScript 5.9.3 の
+`lib.es5.d.ts` に型定義が無かったため、`src/json-raw.d.ts` に ambient 宣言
+を追加した。
+
+**トランスポート**: 行分割は `node:readline` を使わず自前実装（単独 `\r`
+での誤分割・上限バイト数の契約が表現できない・ストリームのフロー制御を
+奪う、という3点で不適合だったため）。`LineReader` は Python の
+`queue.Queue(maxsize=1)` を直訳した1スロットのバックプレッシャ。
+`DirectTransport` の段階的 close（stdin→SIGTERM→SIGKILL）は Node の
+`exitCode`/`signalCode` 分離を吸収して Python の `Popen.poll()` 規約
+（シグナル死は `-15` 等）に揃えた。`SocketTransport` は `connectTcp`/
+`connectUnix` に加え、`connectSocket(stream: Duplex)` が TLS の継ぎ目
+（ドライバは `node:tls` を一切 import しない）。
+
+**呼び出しの直列化とタイムアウト**: Node にロックが無いため `Session`
+内の promise チェーンで代用。タイムアウト・abort 時は1つの pending read
+を中断する手段が無いため、Python と同じく「二度と使えない接続」を代償に
+バックグラウンドで `transport.close()` を開始する。Python との違いは
+その teardown promise を保持し、後続の `close()` が必ず await する点——
+これにより `node --test` が生きた子プロセスを抱えたまま終了することが
+無くなる。
+
+**netcheck**: `netcheck.mjs` が (a) `typescript` パッケージの
+`ts.preProcessFile` で `src/codec.ts` の import を静的検査（相対 import
+以外は全て失格）、(b) ビルド済み `dist/codec.js` を子プロセスで import し
+`process.moduleLoadList` の差分を検査、(c) 同じ検査を `node:net` 自身に
+対して行う陽性対照（`process.moduleLoadList` が未文書なので、検知機構
+自体が壊れていないかを確認する）の3段構え。意図的に `node:child_process`
+を import させて両方の検査が確実に落ちることも確認済み。
+
+**実装中に踏んだ罠（2件）**:
+1. **CPU張り付き事故**: `transport.test.ts` の `MAX_LINE_BYTES` 超過検証
+   テストに `sh -c "yes | tr -d '\n'"`（自然終了しない無限出力パイプ
+   ライン）を使ったところ、`LineReader` 側の実バグ（terminal 状態に
+   なった後もストリームを読み続け `#pending` が際限なく伸びる）と重なり、
+   バックグラウンド実行中のテストコマンドが実質無限ループになって
+   ユーザーが環境ごと強制再起動する事態になった。`#onData`/`#terminate`
+   に「terminal 後は何もしない」ガードを追加し、テスト側も `head -c` で
+   有限出力に変更。教訓をメモリに保存し、以後バックグラウンドコマンドは
+   `timeout` を付けて実行する運用に変更した。
+2. `SocketClient` に `#socket` フィールドを型レベルの区別のためだけに
+   持たせようとしたが、Biome の `noUnusedPrivateClassMembers` が正しく
+   検出。`overwrite`/`exitCode` を宣言していないこと自体で型安全性は
+   十分に達成されているため、未使用フィールドは削除した（過剰な設計を
+   避ける）。
+
+**テスト**: `codec.test.ts`(47)・`match.test.ts`(10)・`transport.test.ts`
+(9)・`client.test.ts`(17)・`socket.test.ts`(8)・`conformance.test.ts`(7、
+6ケース＋非空検証) の計98件、`make typescript-test` で全緑
+（`node --test 'build-test/test/**/*.test.js'` ——`node --test <dir>` は
+ディレクトリを `require()` しようとして失敗するため、glob 必須）。
+conformance の6ケースは `known_failing` 無しで全通過（v0.1.1 で解消済みの
+ため）。`node --test` は `--test-force-exit` 無しで自力終了することを
+確認済み（生きた子プロセスを残していないことの担保）。
+
+**実機検証**: SSH forced command 経由の `connect("ssh", [...])`（任意
+コマンド送信の無視・forced `--read-only` の実効性の両方）と、socat
+`OPENSSL-LISTEN` 越しの mTLS（`tls.connect` → `connectSocket`、正しい
+クライアント証明書での成功、CAチェーン外証明書の `SSL_accept():
+certificate verify failed` 拒否）の両方を、Go・Python と同じ手順で
+TypeScript ドライバに対しても実施し確認した。
+
+**Makefile / CI**: `typescript-deps`（`npm ci`、`node_modules/
+.package-lock.json` をスタンプファイルにした Python の `pyvenv.cfg` と
+同型パターン）/`typescript-build`/`typescript-build-test`/
+`typescript-lint`/`typescript-typecheck`/`typescript-netcheck`/
+`typescript-test` を追加。CI は `typescript` ジョブを追加し、Node
+`["22.12","24"]` をマトリクス化（`engines` は npm が強制しないため、
+宣言した下限を実際に実行して初めて保証される——Python の
+`requires-python` マトリクスと同じ論拠）。
+
+**利用者向けドキュメント**（`.claude/`・`CLAUDE.md`・`PLAN.md` を一切
+参照しない）: ルート `README.md`/`README_ja.md` の言語表を `available`/
+`利用可能` に更新。`typescript/README.md` を `python/README.md` と同じ
+節構成で新規作成（英語のみ。TS固有の注意として INTEGER↔`bigint` と
+`JSON.stringify` が bigint で例外を投げる点を明記）。
+`docs/usage/connecting.md`/`connecting_ja.md` の6箇所（Local・SSH
+リモートコマンド・Docker・Kubernetes・素のソケット・TLS/mTLS）に
+TypeScript の例を追加（計12編集）し、SSH forced command・TLS/mTLS の
+「実際に検証した内容」にも TypeScript の確認結果を追記した。
+
+**内部ルールの更新**: `.claude/rules/naming.md`・`distribution.md` に
+TypeScript の行を追加（タグ規則 `typescript/vX.Y.Z`）。
+
+**この作業でやらなかったこと**: npm への実際の publish（③配布・公開は
+スコープ外、ユーザー作業として後続——PyPI と同じ進め方）。
+
+`.claude/settings.json` の `PostToolUse` フックへの TypeScript 用分岐
+追加は提案してユーザー承認を得て適用済み（`*typescript/*.ts`・
+`*typescript/package.json` 編集後に `make typescript-typecheck` を自動
+実行。Go の `go-build`・Python の lint+typecheck と同じパターン。
+シミュレーションで実際に発火することと、無関係なファイルでは発火しない
+ことの両方を確認済み）。
+
+**次はフェーズ⑧（4番目の言語）——需要を見て検討する。**
 
 ## GitHub リポジトリ設定（決定事項、リポジトリ作成時に設定）
 
@@ -446,9 +574,10 @@ Go ドライバをリファレンス実装として、`python/` 配下に Python
 ## 未確認事項（実装前に決める・確かめる）
 
 - ~~devcontainer に `sshd` が入っていないため……~~ → **解消。**
-  フェーズ⑤・⑥それぞれで `sudo /usr/sbin/sshd` を一時起動し、forced
-  command 経由の SSH 直結を Go・Python 両ドライバに対して end-to-end で
-  確認済み（`docs/usage/connecting.md` の該当節参照）。
+  フェーズ⑤・⑥・⑦それぞれで `sshd`（フェーズ⑦では非root・カスタム
+  ポートで一時起動）を立て、forced command 経由の SSH 直結を Go・
+  Python・TypeScript 全ドライバに対して end-to-end で確認済み
+  （`docs/usage/connecting.md` の該当節参照）。
 
 ## 保留事項
 
@@ -456,10 +585,14 @@ Go ドライバをリファレンス実装として、`python/` 配下に Python
   `go/go.mod`・`go/go.sum` への Edit/Write 後に `make go-build` を
   自動実行するフックを `.claude/settings.json` に追加（実際に発火する
   ことをセンチネルファイルで確認済み）。
-- ~~PyPI / npm のパッケージ名の予約状況が未確認~~ → **Python 側は解消。**
-  `san-db-ox`・`san-db-ox-client` とも PyPI 未登録を確認し `san-db-ox`
-  に確定（`naming.md`・`distribution.md` 反映済み）。npm 側は
-  TypeScript 着手時に確認する。
+- ~~PyPI / npm のパッケージ名の予約状況が未確認~~ → **両方解消。**
+  Python 側: `san-db-ox`・`san-db-ox-client` とも PyPI 未登録を確認し
+  `san-db-ox-client` に確定。npm 側: スコープ付き名
+  `@amisonnet8/san-db-ox-client` を採用したことで、PyPI で踏んだ
+  「記号除去後の正規化による衝突」という問題圏自体に入らない設計にした
+  （`naming.md`・`distribution.md` 反映済み）。`amisonnet8` スコープの
+  存在確認と初回 `npm publish --access public` の実行は③配布フェーズ
+  （ユーザー作業）で行う。
 - **devcontainer.json 反映待ちリスト**: 現行コンテナはリビルドせずに
   開発を進める方針（都度手動でインストール・設定して進め、区切りでまとめて
   `devcontainer.json` へ反映する）。session内で手動インストール・設定を

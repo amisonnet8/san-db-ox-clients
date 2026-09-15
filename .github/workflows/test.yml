@@ -79,3 +79,27 @@ jobs:
       - run: make python-typecheck
       - run: make python-netcheck
       - run: make python-test
+
+  # ubuntu-latest 限定（go/python ジョブと同じ理由）。バージョンはマトリクス
+  # にする -- package.json の engines は npm が強制しないため、宣言した
+  # 下限（>=22.12、devcontainer.json 参照）を実際にそのバージョンで実行
+  # して初めて保証される。python ジョブの requires-python マトリクスと
+  # 同じ論拠。
+  typescript:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ["22.12", "24"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+          cache-dependency-path: typescript/package-lock.json
+      - run: make typescript-build
+      - run: make typescript-lint
+      - run: make typescript-typecheck
+      - run: make typescript-netcheck
+      - run: make typescript-test

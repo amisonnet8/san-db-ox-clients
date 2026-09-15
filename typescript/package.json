@@ -1,0 +1,33 @@
+{
+  "name": "@amisonnet8/san-db-ox-client",
+  "version": "0.1.0",
+  "description": "Thin client driver for san-db-ox (SanDBox), speaking its JSON Lines stdio protocol",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=22.12"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/amisonnet8/san-db-ox-clients.git",
+    "directory": "typescript"
+  },
+  "homepage": "https://github.com/amisonnet8/san-db-ox-clients/tree/main/typescript",
+  "dependencies": {},
+  "devDependencies": {
+    "@biomejs/biome": "^2.0.0",
+    "@types/node": "^22.12.0",
+    "typescript": "^5.7.0"
+  }
+}
