@@ -30,6 +30,30 @@ sudo apt-get install -y --no-install-recommends \
 # in san-db-ox's own postCreate.sh; see .claude/rules/testing.md there).
 # Capitalizing ("ShellCheck") avoids the misparse, as done above and below.
 
+# Java (Temurin 17 + 25) and Maven: installed here instead of via
+# ghcr.io/devcontainers/features/java. Under podman/buildah that feature
+# left /tmp non-world-writable in the built image, breaking apt-get in later
+# features and VS Code's own in-container setup (see the note in
+# devcontainer.json). 17 is the lower leg and 25 the upper leg of the CI
+# matrix; Temurin from Adoptium's own apt repo matches distribution: temurin
+# in .github/workflows/test.yml. Adoptium's key is ASCII-armored like trivy's,
+# so it goes through `gpg --dearmor`.
+curl -fsSL https://packages.adoptium.net/artifactory/api/gpg/key/public \
+  | gpg --dearmor | sudo tee /usr/share/keyrings/adoptium.gpg > /dev/null
+echo "deb [signed-by=/usr/share/keyrings/adoptium.gpg] https://packages.adoptium.net/artifactory/deb $(lsb_release -cs) main" \
+  | sudo tee /etc/apt/sources.list.d/adoptium.list > /dev/null
+sudo apt-get update
+sudo apt-get install -y --no-install-recommends \
+  temurin-17-jdk temurin-25-jdk maven
+# Both JDKs register java/javac alternatives, and Debian's maven may pull in
+# an OpenJDK runtime as well -- pin the default to Temurin 17 explicitly
+# rather than relying on alternatives priority. 25 stays reachable at
+# /usr/lib/jvm/temurin-25-jdk-*/bin/java.
+for tool in java javac; do
+  sudo update-alternatives --set "$tool" \
+    "$(update-alternatives --list "$tool" | grep temurin-17)"
+done
+
 # trivy: not available as a devcontainer feature, and its apt repo isn't a
 # one-liner, so it is installed here rather than via "features" in
 # devcontainer.json (.claude/rules/testing.md: "features は公式のみ" applies

@@ -23,19 +23,15 @@
     // neither.
     "ghcr.io/devcontainers/features/rust:1": {
       "profile": "default"
-    },
-    // Java driver requires 17 (bookworm's apt openjdk-17-jdk works for the
-    // lower leg, but this feature also brings 25 for the upper leg of the
-    // CI matrix). jdkDistro "tem" (Temurin) matches distribution: temurin
-    // in .github/workflows/test.yml. additionalVersions is a real option
-    // of this feature (verified against its devcontainer-feature.json) --
-    // a comma-separated string, not an array.
-    "ghcr.io/devcontainers/features/java:1": {
-      "version": "17",
-      "additionalVersions": "25",
-      "jdkDistro": "tem",
-      "installMaven": true
     }
+    // Java (Temurin 17 + 25, Maven) is installed in .devcontainer/postCreate.sh,
+    // not via ghcr.io/devcontainers/features/java. Under podman/buildah that
+    // feature left /tmp non-world-writable in the built image, which broke
+    // apt-get in later features ("Couldn't create temporary file ... for
+    // passing config to apt-key") and VS Code's own setup in the container
+    // ("mkdir: cannot create directory '/tmp/.X11-unix': Permission denied").
+    // Temurin comes from Adoptium's apt repo, matching distribution: temurin
+    // in .github/workflows/test.yml.
   },
   "customizations": {
     "vscode": {
